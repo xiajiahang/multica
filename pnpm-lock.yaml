@@ -4,6 +4,27 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@types/node':
+      specifier: ^25.0.10
+      version: 25.0.10
+    '@types/react':
+      specifier: ^19
+      version: 19.2.10
+    '@types/react-dom':
+      specifier: ^19
+      version: 19.2.3
+    react:
+      specifier: 19.2.3
+      version: 19.2.3
+    react-dom:
+      specifier: 19.2.3
+      version: 19.2.3
+    typescript:
+      specifier: ^5.9.3
+      version: 5.9.3
+
 importers:
 
   .:
@@ -85,7 +106,7 @@ importers:
         version: 2.8.2
     devDependencies:
       '@types/node':
-        specifier: ^25.0.10
+        specifier: 'catalog:'
         version: 25.0.10
       '@types/turndown':
         specifier: ^5.0.6
@@ -100,24 +121,24 @@ importers:
         specifier: ^2.3.4
         version: 2.8.0
       typescript:
-        specifier: ^5.9.3
+        specifier: 'catalog:'
         version: 5.9.3
 
   apps/desktop:
     dependencies:
       react:
-        specifier: ^18.2.0
-        version: 18.3.1
+        specifier: 'catalog:'
+        version: 19.2.3
       react-dom:
-        specifier: ^18.2.0
-        version: 18.3.1(react@18.3.1)
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
     devDependencies:
       '@types/react':
-        specifier: ^18.2.64
-        version: 18.3.27
+        specifier: 'catalog:'
+        version: 19.2.10
       '@types/react-dom':
-        specifier: ^18.2.21
-        version: 18.3.7(@types/react@18.3.27)
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.10)
       '@typescript-eslint/eslint-plugin':
         specifier: ^7.1.1
         version: 7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
@@ -143,7 +164,7 @@ importers:
         specifier: ^0.4.5
         version: 0.4.26(eslint@8.57.1)
       typescript:
-        specifier: ^5.2.2
+        specifier: 'catalog:'
         version: 5.9.3
       vite:
         specifier: ^5.1.6
@@ -170,20 +191,20 @@ importers:
         specifier: 16.1.6
         version: 16.1.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react:
-        specifier: 19.2.3
+        specifier: 'catalog:'
         version: 19.2.3
       react-dom:
-        specifier: 19.2.3
+        specifier: 'catalog:'
         version: 19.2.3(react@19.2.3)
     devDependencies:
       '@types/node':
-        specifier: ^20
-        version: 20.19.30
+        specifier: 'catalog:'
+        version: 25.0.10
       '@types/react':
-        specifier: ^19
+        specifier: 'catalog:'
         version: 19.2.10
       '@types/react-dom':
-        specifier: ^19
+        specifier: 'catalog:'
         version: 19.2.3(@types/react@19.2.10)
       eslint:
         specifier: ^9
@@ -192,7 +213,7 @@ importers:
         specifier: 16.1.6
         version: 16.1.6(@typescript-eslint/parser@8.54.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
       typescript:
-        specifier: ^5
+        specifier: 'catalog:'
         version: 5.9.3
 
   packages/sdk:
@@ -229,10 +250,10 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       react:
-        specifier: ^19.0.0
+        specifier: 'catalog:'
         version: 19.2.3
       react-dom:
-        specifier: ^19.0.0
+        specifier: 'catalog:'
         version: 19.2.3(react@19.2.3)
       shadcn:
         specifier: ^3.7.0
@@ -251,13 +272,13 @@ importers:
         specifier: ^4
         version: 4.1.18
       '@types/react':
-        specifier: ^19
+        specifier: 'catalog:'
         version: 19.2.10
       '@types/react-dom':
-        specifier: ^19
+        specifier: 'catalog:'
         version: 19.2.3(@types/react@19.2.10)
       typescript:
-        specifier: ^5
+        specifier: 'catalog:'
         version: 5.9.3
 
 packages:
@@ -2053,21 +2074,10 @@ packages:
   '@types/plist@3.0.5':
     resolution: {integrity: sha512-E6OCaRmAe4WDmWNsL/9RMqdkkzDCY1etutkflWk4c+AcjDU07Pcz1fQwTX0TQz+Pxqn9i4L1TU3UFpjnrcDgxA==}
 
-  '@types/prop-types@15.7.15':
-    resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
-
-  '@types/react-dom@18.3.7':
-    resolution: {integrity: sha512-MEe3UeoENYVFXzoXEWsvcpg6ZvlrFNlOQ7EOsvhI3CfAXwzPfO8Qwuxd40nepsYKqyyVQnTdEfv68q91yLcKrQ==}
-    peerDependencies:
-      '@types/react': ^18.0.0
-
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
     peerDependencies:
       '@types/react': ^19.2.0
-
-  '@types/react@18.3.27':
-    resolution: {integrity: sha512-cisd7gxkzjBKU2GgdYrTdtQx1SORymWyaAFhaxQPK9bYO9ot3Y5OikQRvY0VYQtvwjeQnizCINJAenh/V7MK2w==}
 
   '@types/react@19.2.10':
     resolution: {integrity: sha512-WPigyYuGhgZ/cTPRXB2EwUw+XvsRA3GqHlsP4qteqrnnjDrApbS7MxcGr/hke5iUoeB7E/gQtrs9I37zAJ0Vjw==}
@@ -4762,11 +4772,6 @@ packages:
     resolution: {integrity: sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==}
     engines: {node: '>= 0.10'}
 
-  react-dom@18.3.1:
-    resolution: {integrity: sha512-5m4nQKp+rZRb09LNH59GM4BxTh9251/ylbKIbpe7TpGxfJ+9kv6BLkLBXIjjspbgbnIBNqlI23tRnTWT0snUIw==}
-    peerDependencies:
-      react: ^18.3.1
-
   react-dom@19.2.3:
     resolution: {integrity: sha512-yELu4WmLPw5Mr/lmeEpox5rw3RETacE++JgHqQzd2dg+YbJuat3jH4ingc+WPZhxaoFzdv9y33G+F7Nl5O0GBg==}
     peerDependencies:
@@ -4777,10 +4782,6 @@ packages:
 
   react-refresh@0.17.0:
     resolution: {integrity: sha512-z6F7K9bV85EfseRCp2bzrpyQ0Gkw1uLoCel9XBVWPg/TjRj94SkJzUTGfOa4bs7iJvBWtQG0Wq7wnI0syw3EBQ==}
-    engines: {node: '>=0.10.0'}
-
-  react@18.3.1:
-    resolution: {integrity: sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==}
     engines: {node: '>=0.10.0'}
 
   react@19.2.3:
@@ -4931,9 +4932,6 @@ packages:
   sax@1.4.4:
     resolution: {integrity: sha512-1n3r/tGXO6b6VXMdFT54SHzT9ytu9yr7TaELowdYpMqY/Ao7EnlQGmAQ1+RatX7Tkkdm6hONI2owqNx2aZj5Sw==}
     engines: {node: '>=11.0.0'}
-
-  scheduler@0.23.2:
-    resolution: {integrity: sha512-UOShsPwz7NrMUqhR6t0hWjFduvOzbtv7toDH1/hIrfRNIDBnnBWd0CwJTGvTpngVlmwGCdP9/Zl/tVrDqcuYzQ==}
 
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
@@ -7823,20 +7821,9 @@ snapshots:
       xmlbuilder: 15.1.1
     optional: true
 
-  '@types/prop-types@15.7.15': {}
-
-  '@types/react-dom@18.3.7(@types/react@18.3.27)':
-    dependencies:
-      '@types/react': 18.3.27
-
   '@types/react-dom@19.2.3(@types/react@19.2.10)':
     dependencies:
       '@types/react': 19.2.10
-
-  '@types/react@18.3.27':
-    dependencies:
-      '@types/prop-types': 15.7.15
-      csstype: 3.2.3
 
   '@types/react@19.2.10':
     dependencies:
@@ -10951,12 +10938,6 @@ snapshots:
       iconv-lite: 0.7.2
       unpipe: 1.0.0
 
-  react-dom@18.3.1(react@18.3.1):
-    dependencies:
-      loose-envify: 1.4.0
-      react: 18.3.1
-      scheduler: 0.23.2
-
   react-dom@19.2.3(react@19.2.3):
     dependencies:
       react: 19.2.3
@@ -10965,10 +10946,6 @@ snapshots:
   react-is@16.13.1: {}
 
   react-refresh@0.17.0: {}
-
-  react@18.3.1:
-    dependencies:
-      loose-envify: 1.4.0
 
   react@19.2.3: {}
 
@@ -11173,10 +11150,6 @@ snapshots:
       truncate-utf8-bytes: 1.0.2
 
   sax@1.4.4: {}
-
-  scheduler@0.23.2:
-    dependencies:
-      loose-envify: 1.4.0
 
   scheduler@0.27.0: {}
 
