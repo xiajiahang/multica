@@ -147,16 +147,9 @@ export class Agent {
 
     // Initialize SkillManager (enabled by default)
     if (options.enableSkills !== false) {
-      // Merge extraSkillDirs from options with config
-      const extraDirs = [
-        ...(options.extraSkillDirs ?? []),
-        ...(options.skills?.load?.extraDirs ?? []),
-      ];
-
       this.skillManager = new SkillManager({
         profileId: options.profileId,
         profileBaseDir: options.profileBaseDir,
-        extraDirs: extraDirs.length > 0 ? extraDirs : undefined,
         config: options.skills,
       });
 

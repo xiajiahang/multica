@@ -58,8 +58,6 @@ export type AgentOptions = {
   // === Skills Configuration ===
   /** Enable skills system (default: true) */
   enableSkills?: boolean | undefined;
-  /** Additional directories to search for skills */
-  extraSkillDirs?: string[] | undefined;
   /** Full skills configuration */
   skills?: SkillsConfig | undefined;
 

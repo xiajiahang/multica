@@ -6,7 +6,7 @@
  */
 
 import type { Skill, SkillManagerOptions, SkillsConfig, SkillCommandSpec, SkillInvocationResult } from "./types.js";
-import { loadAllSkills, getBundledSkillsDir, getProfileSkillsDir } from "./loader.js";
+import { loadAllSkills, getProfileSkillsDir, initializeManagedSkills, getManagedSkillsDir } from "./loader.js";
 import {
   filterEligibleSkills,
   checkEligibility,
@@ -72,7 +72,7 @@ export {
 } from "./eligibility.js";
 
 export { parseFrontmatter, parseSkillFile } from "./parser.js";
-export { loadAllSkills, getBundledSkillsDir, getProfileSkillsDir } from "./loader.js";
+export { loadAllSkills, getProfileSkillsDir, initializeManagedSkills, getManagedSkillsDir } from "./loader.js";
 
 // Export install module
 export {
@@ -128,19 +128,6 @@ export {
   waitForAll,
   SerializeKeys,
 } from "./serialize.js";
-
-// Export plugin module
-export {
-  PLUGIN_MANIFEST_FILENAME,
-  loadPluginManifest,
-  loadPluginRegistry,
-  resolvePluginSkillDirs,
-  getPluginRegistry,
-  type PluginManifest,
-  type PluginRecord,
-  type PluginDiagnostic,
-  type PluginRegistry,
-} from "./plugin.js";
 
 /**
  * SkillManager - Loads and manages skills
@@ -215,7 +202,8 @@ export class SkillManager {
     // Start the watcher (enabled by default unless explicitly set to false)
     const watchEnabled = this.options.config?.load?.watch ?? true;
     await startSkillsWatcher({
-      extraDirs: this.options.extraDirs,
+      profileId: this.options.profileId,
+      profileBaseDir: this.options.profileBaseDir,
       debounceMs: this.options.config?.load?.watchDebounceMs,
       enabled: watchEnabled,
     });

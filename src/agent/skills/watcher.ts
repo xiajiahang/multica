@@ -14,10 +14,10 @@ import { DATA_DIR } from "../../shared/index.js";
 // ============================================================================
 
 export interface SkillsWatcherOptions {
-  /** Workspace directory to watch (for <workspace>/skills) */
-  workspaceDir?: string | undefined;
-  /** Additional directories to watch */
-  extraDirs?: string[] | undefined;
+  /** Profile ID (for profile-specific skills watching) */
+  profileId?: string | undefined;
+  /** Profile base directory */
+  profileBaseDir?: string | undefined;
   /** Debounce delay in milliseconds (default: 250) */
   debounceMs?: number | undefined;
   /** Whether watching is enabled (default: true) */
@@ -128,25 +128,18 @@ const IGNORED_PATTERNS = [
 function resolveWatchPaths(options: SkillsWatcherOptions): string[] {
   const paths: string[] = [];
 
-  // Workspace skills
-  if (options.workspaceDir?.trim()) {
-    const workspaceSkills = join(options.workspaceDir, "skills");
-    if (existsSync(workspaceSkills)) {
-      paths.push(workspaceSkills);
-    }
-  }
-
   // Managed skills (~/.super-multica/skills)
   const managedSkills = join(DATA_DIR, "skills");
   if (existsSync(managedSkills)) {
     paths.push(managedSkills);
   }
 
-  // Extra directories
-  for (const dir of options.extraDirs ?? []) {
-    const trimmed = dir.trim();
-    if (trimmed && existsSync(trimmed)) {
-      paths.push(trimmed);
+  // Profile skills (~/.super-multica/agent-profiles/<id>/skills)
+  if (options.profileId) {
+    const profileBaseDir = options.profileBaseDir ?? join(DATA_DIR, "agent-profiles");
+    const profileSkills = join(profileBaseDir, options.profileId, "skills");
+    if (existsSync(profileSkills)) {
+      paths.push(profileSkills);
     }
   }
 

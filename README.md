@@ -157,12 +157,11 @@ Skills are modular capabilities that extend agent functionality through `SKILL.m
 
 ### Key Features
 
-- **Multi-source loading** - Bundled, user-installed, plugin-based, and profile-specific skills
+- **Two-source loading** - Global skills (`~/.super-multica/skills/`) and profile-specific skills
 - **GitHub installation** - `pnpm skills:cli add owner/repo` to install from GitHub
 - **Slash command invocation** - `/skill-name args` in interactive mode
 - **Eligibility filtering** - Auto-filter by platform, binaries, and environment
 - **Hot reload** - File watcher for development
-- **Plugin system** - Auto-discover skills from npm packages with `multica.plugin.json`
 
 ### Quick Start
 

@@ -190,40 +190,18 @@ Skill 名称会被规范化以用作命令：
 
 ## 加载与优先级
 
-Skills 从多个来源加载，优先级从低到高：
+Skills 从两个来源加载，优先级从低到高：
 
 | 优先级 | 来源 | 路径 | 描述 |
 |--------|------|------|------|
-| 1 | bundled | `<project>/skills/` | 内置 skills |
-| 2 | extraDirs | 已配置 | 额外目录 |
-| 3 | plugins | `node_modules/*/` | 带有 `multica.plugin.json` 的 npm 包 |
-| 4 | managed | `~/.super-multica/skills/` | CLI 安装的 skills |
-| 5 | profile | `~/.super-multica/agent-profiles/<id>/skills/` | 配置文件特定 |
+| 1 | managed | `~/.super-multica/skills/` | 全局 skills（CLI 安装 + 内置） |
+| 2 | profile | `~/.super-multica/agent-profiles/<id>/skills/` | Profile 专属 skills |
 
 高优先级来源会覆盖具有相同 ID 的 skills。
 
-### 插件系统（npm 包）
+### 初始化
 
-对于提供 skills 的 npm 包，如果包含 `multica.plugin.json` 清单，插件系统会自动发现：
-
-```json
-{
-  "id": "my-plugin",
-  "name": "My Skills Plugin",
-  "description": "一组有用的 skills",
-  "version": "1.0.0",
-  "skills": ["./skills/pdf", "./skills/image"]
-}
-```
-
-**何时使用插件 vs `add` 命令：**
-
-| 方式 | 使用场景 |
-|------|----------|
-| `pnpm skills:cli add owner/repo` | 从 GitHub 安装（大多数情况下推荐） |
-| `npm install @company/plugin` | 包作者提供了 `multica.plugin.json`，或需要 npm 的依赖管理 |
-
-> **注意：** 大多数第三方 skills（如 `vercel-labs/agent-skills`）通过 GitHub 分发，不包含 `multica.plugin.json`。对于这些请使用 `add` 命令。
+首次运行时，内置 skills 会自动复制到 managed 目录（`~/.super-multica/skills/`）。这使得用户可以编辑或删除它们。
 
 ### 资格过滤
 

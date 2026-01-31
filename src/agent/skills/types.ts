@@ -174,8 +174,6 @@ export interface SkillConfig {
  * Skills loading configuration
  */
 export interface SkillsLoadConfig {
-  /** Additional directories to search for skills */
-  extraDirs?: string[] | undefined;
   /** Enable file watching for hot reload (default: true) */
   watch?: boolean | undefined;
   /** Watch debounce delay in ms (default: 250) */
@@ -218,16 +216,10 @@ export interface SkillManagerOptions {
   profileId?: string | undefined;
   /** Profile base directory, defaults to ~/.super-multica/agent-profiles */
   profileBaseDir?: string | undefined;
-  /** Additional directories to search for skills */
-  extraDirs?: string[] | undefined;
   /** Platform override (for testing) */
   platform?: NodeJS.Platform | undefined;
   /** Skills configuration */
   config?: SkillsConfig | undefined;
-  /** Workspace directory for plugin discovery (defaults to cwd) */
-  workspaceDir?: string | undefined;
-  /** Additional paths to search for plugins (directories with multica.plugin.json) */
-  pluginPaths?: string[] | undefined;
 }
 
 /**

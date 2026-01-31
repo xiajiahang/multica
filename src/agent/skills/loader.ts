@@ -1,28 +1,28 @@
 /**
  * Skills Loader
  *
- * Multi-source loading with precedence handling
- * Supports bundled skills, user-installed skills, profile skills, and plugin skills
+ * Two-source loading with precedence handling:
+ * 1. managed - ~/.super-multica/skills/ (global skills)
+ * 2. profile - ~/.super-multica/agent-profiles/<id>/skills/ (profile-specific)
  */
 
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync, mkdirSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Skill, SkillSource, SkillManagerOptions } from "./types.js";
 import { SKILL_FILE, SKILL_SOURCE_PRECEDENCE } from "./types.js";
 import { parseSkillFile } from "./parser.js";
 import { DATA_DIR } from "../../shared/index.js";
-import { resolvePluginSkillDirs } from "./plugin.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Default profile base directory */
 const DEFAULT_PROFILE_BASE_DIR = join(DATA_DIR, "agent-profiles");
 
-/** Bundled skills directory (relative to package) */
+/** Bundled skills directory (relative to package, used for initialization) */
 const BUNDLED_DIR = join(__dirname, "../../../skills");
 
-/** Managed skills directory (user-installed via `skills add`) */
+/** Managed skills directory (global user skills) */
 const MANAGED_DIR = join(DATA_DIR, "skills");
 
 /**
@@ -114,66 +114,80 @@ export function getProfileSkillsDir(profileId: string, profileBaseDir?: string):
 }
 
 /**
+ * Initialize managed skills directory with bundled skills
+ * Copies bundled skills to ~/.super-multica/skills/ if not already present
+ *
+ * This should be called once during application startup.
+ */
+export function initializeManagedSkills(): void {
+  // Create managed dir if not exists
+  if (!existsSync(MANAGED_DIR)) {
+    mkdirSync(MANAGED_DIR, { recursive: true });
+  }
+
+  // Skip if bundled dir doesn't exist (e.g., in production builds)
+  if (!existsSync(BUNDLED_DIR)) {
+    return;
+  }
+
+  // Copy each bundled skill if not already in managed
+  try {
+    const entries = readdirSync(BUNDLED_DIR);
+    for (const skillName of entries) {
+      // Skip hidden directories
+      if (skillName.startsWith(".")) continue;
+
+      const src = join(BUNDLED_DIR, skillName);
+      const dest = join(MANAGED_DIR, skillName);
+
+      // Only copy directories that don't already exist
+      if (!existsSync(dest) && statSync(src).isDirectory()) {
+        cpSync(src, dest, { recursive: true });
+      }
+    }
+  } catch {
+    // Ignore errors during initialization
+  }
+}
+
+/**
+ * Get path to managed skills directory
+ */
+export function getManagedSkillsDir(): string {
+  return MANAGED_DIR;
+}
+
+/**
  * Load all skills from all sources, applying precedence
  * Higher precedence sources override skills with the same ID
  *
  * Loading order (lowest to highest precedence):
- * 1. bundled - Package bundled skills
- * 2. extra - User-configured extra directories
- * 3. plugins - Skills from npm packages with multica.plugin.json
- * 4. managed - ~/.super-multica/skills/ (user-installed via `skills add`)
- * 5. profile - ~/.super-multica/agent-profiles/<profileId>/skills/
+ * 1. managed - ~/.super-multica/skills/ (global skills)
+ * 2. profile - ~/.super-multica/agent-profiles/<profileId>/skills/
  *
  * @param options - Loader options
  * @returns Map of skill ID to Skill
  */
 export function loadAllSkills(options: SkillManagerOptions = {}): Map<string, Skill> {
+  // Initialize managed skills on first load (copies bundled skills if needed)
+  initializeManagedSkills();
+
   const skillMap = new Map<string, Skill>();
 
-  // Discover plugin skill directories
-  const pluginSkillDirs = resolvePluginSkillDirs({
-    workspaceDir: options.workspaceDir ?? process.cwd(),
-    extraPaths: options.pluginPaths ?? [],
-  });
-
-  // Define sources in order of precedence (lowest first)
-  const sources: Array<[string, SkillSource]> = [
-    // Bundled skills (lowest precedence)
-    [BUNDLED_DIR, "bundled"],
-    // Extra directories (treated as bundled)
-    ...(options.extraDirs ?? []).map((d): [string, SkillSource] => [d, "bundled"]),
-    // Plugin skills (between extra and managed)
-    ...pluginSkillDirs.map((d): [string, SkillSource] => [d, "bundled"]),
-    // Managed skills (user-installed via `skills add`)
-    [MANAGED_DIR, "profile"],
-  ];
-
-  // Add profile skills if profileId is provided (highest precedence)
-  if (options.profileId) {
-    const profileSkillsDir = getProfileSkillsDir(options.profileId, options.profileBaseDir);
-    sources.push([profileSkillsDir, "profile"]);
+  // 1. Load managed skills (lower precedence)
+  const managedSkills = loadSkillsFromSource(MANAGED_DIR, "bundled");
+  for (const skill of managedSkills) {
+    skillMap.set(skill.id, skill);
   }
 
-  for (const [dir, source] of sources) {
-    const skills = loadSkillsFromSource(dir, source);
-    for (const skill of skills) {
-      const existing = skillMap.get(skill.id);
-      // Higher precedence overwrites lower
-      if (
-        !existing ||
-        SKILL_SOURCE_PRECEDENCE[source] > SKILL_SOURCE_PRECEDENCE[existing.source]
-      ) {
-        skillMap.set(skill.id, skill);
-      }
+  // 2. Load profile skills if profileId is provided (higher precedence)
+  if (options.profileId) {
+    const profileSkillsDir = getProfileSkillsDir(options.profileId, options.profileBaseDir);
+    const profileSkills = loadSkillsFromSource(profileSkillsDir, "profile");
+    for (const skill of profileSkills) {
+      skillMap.set(skill.id, skill); // Override managed
     }
   }
 
   return skillMap;
-}
-
-/**
- * Get path to bundled skills directory
- */
-export function getBundledSkillsDir(): string {
-  return BUNDLED_DIR;
 }

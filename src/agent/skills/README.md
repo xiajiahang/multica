@@ -190,40 +190,18 @@ Skill names are normalized for command use:
 
 ## Loading & Precedence
 
-Skills load from multiple sources with precedence (lowest to highest):
+Skills load from two sources with precedence (lowest to highest):
 
 | Priority | Source | Path | Description |
 |----------|--------|------|-------------|
-| 1 | bundled | `<project>/skills/` | Built-in skills |
-| 2 | extraDirs | Configured | Additional directories |
-| 3 | plugins | `node_modules/*/` | npm packages with `multica.plugin.json` |
-| 4 | managed | `~/.super-multica/skills/` | CLI-installed skills |
-| 5 | profile | `~/.super-multica/agent-profiles/<id>/skills/` | Profile-specific |
+| 1 | managed | `~/.super-multica/skills/` | Global skills (CLI-installed + bundled) |
+| 2 | profile | `~/.super-multica/agent-profiles/<id>/skills/` | Profile-specific skills |
 
 Higher priority sources override skills with the same ID.
 
-### Plugin System (npm packages)
+### Initialization
 
-For npm packages that provide skills, the plugin system auto-discovers them if they include a `multica.plugin.json` manifest:
-
-```json
-{
-  "id": "my-plugin",
-  "name": "My Skills Plugin",
-  "description": "A collection of useful skills",
-  "version": "1.0.0",
-  "skills": ["./skills/pdf", "./skills/image"]
-}
-```
-
-**When to use plugins vs `add` command:**
-
-| Method | Use When |
-|--------|----------|
-| `pnpm skills:cli add owner/repo` | Installing from GitHub (recommended for most cases) |
-| `npm install @company/plugin` | Package author provides `multica.plugin.json`, or you need npm's dependency management |
-
-> **Note:** Most third-party skills (like `vercel-labs/agent-skills`) are distributed via GitHub without `multica.plugin.json`. Use the `add` command for these.
+On first run, bundled skills are automatically copied to the managed directory (`~/.super-multica/skills/`). This makes them editable and allows users to customize or remove them.
 
 ### Eligibility Filtering
 
