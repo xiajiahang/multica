@@ -5,6 +5,7 @@ import { Channel } from "./channel.js";
 import type { AgentOptions, Message } from "./types.js";
 import type { MulticaEvent } from "./events.js";
 import { injectMessageTimestamp } from "./message-timestamp.js";
+import { isSilentReplyText } from "./tokens.js";
 
 const devNull = { write: () => true } as unknown as NodeJS.WritableStream;
 
@@ -31,6 +32,7 @@ export class AsyncAgent {
   private pendingWrites = 0;
   private closeCallbacks: Array<() => void> = [];
   private forwardInternalAssistant = false;
+  private _lastRunError: string | undefined;
   readonly sessionId: string;
 
   constructor(options?: AgentOptions) {
@@ -64,13 +66,19 @@ export class AsyncAgent {
 
     this.queue = this.queue
       .then(async () => {
-        if (this._closed) return;
+        if (this._closed) {
+          console.log(`[AsyncAgent:${this.sessionId.slice(0, 8)}] write() skipped — agent closed`);
+          return;
+        }
+        console.log(`[AsyncAgent:${this.sessionId.slice(0, 8)}] run() starting for message: ${content.slice(0, 80)}`);
         const result = await this.agent.run(message, { displayPrompt: content });
+        console.log(`[AsyncAgent:${this.sessionId.slice(0, 8)}] run() completed, error=${result.error ?? "none"}`);
         // Flush pending session writes so waitForIdle() callers
         // can safely read session data from disk.
         await this.agent.flushSession();
         // Normal text is delivered via message_end event; only handle errors here
         if (result.error) {
+          this._lastRunError = result.error;
           console.error(`[AsyncAgent] Agent run error: ${result.error}`);
           this.channel.send({ id: uuidv7(), content: `[error] ${result.error}` });
           // Only emit agent_error for HTTP 401 from the LLM provider so the
@@ -83,6 +91,7 @@ export class AsyncAgent {
       })
       .catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
+        this._lastRunError = message;
         console.error(`[AsyncAgent] Agent run exception: ${message}`);
         this.channel.send({ id: uuidv7(), content: `[error] ${message}` });
         // Only emit agent_error for HTTP 401 from the LLM provider so the
@@ -120,8 +129,11 @@ export class AsyncAgent {
             // Internal run errors are for diagnostics only; do not leak to user stream.
             console.error(`[AsyncAgent] Internal run error: ${result.error}`);
           }
+          // Stop forwarding BEFORE persist to avoid double-emitting the same
+          // assistant message (once from runInternal streaming, once from appendMessage).
+          this.forwardInternalAssistant = prevForward;
           // Persist the LLM summary so it remains in parent context for future turns
-          if (persistResponse && result.text?.trim() && result.text.trim() !== "NO_REPLY") {
+          if (persistResponse && result.text?.trim() && !isSilentReplyText(result.text)) {
             this.agent.persistAssistantSummary(result.text.trim());
             await this.agent.flushSession();
           }
@@ -162,6 +174,43 @@ export class AsyncAgent {
   /** Returns a promise that resolves when the current message queue is drained */
   waitForIdle(): Promise<void> {
     return this.queue;
+  }
+
+  /** Error message from the last run, if it failed. */
+  get lastRunError(): string | undefined {
+    return this._lastRunError;
+  }
+
+  /** Whether the agent is currently executing a run (normal or internal). */
+  get isRunning(): boolean {
+    return this.agent.isRunning;
+  }
+
+  /** Whether the underlying LLM is currently streaming a response. */
+  get isStreaming(): boolean {
+    return this.agent.isStreaming;
+  }
+
+  /**
+   * Steer the agent mid-run. Bypasses the serial queue and injects a message
+   * directly into the PiAgentCore steering queue. The message is delivered
+   * after the current tool execution completes, skipping remaining tool calls.
+   */
+  steer(content: string): void {
+    this.agent.steer(content);
+  }
+
+  /**
+   * Queue a follow-up message for after the current run finishes.
+   * Delivered only when the agent has no more tool calls or steering messages.
+   */
+  followUp(content: string): void {
+    this.agent.followUp(content);
+  }
+
+  /** Whether the underlying PiAgentCore has queued steer/followUp messages. */
+  hasQueuedMessages(): boolean {
+    return this.agent.hasQueuedMessages();
   }
 
   private shouldForwardEvent(event: AgentEvent | MulticaEvent): boolean {

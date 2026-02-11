@@ -91,6 +91,7 @@ export class Agent {
 
   // Internal run state
   private _internalRun = false;
+  private _isRunning = false;
   private _runMutex: Promise<void> = Promise.resolve();
   private currentUserDisplayPrompt: string | undefined;
 
@@ -304,8 +305,8 @@ export class Agent {
     const mergedToolsConfig = mergeToolsConfig(profileToolsConfig, options.tools);
     const profileDir = this.profile?.getProfileDir();
     this.toolsOptions = mergedToolsConfig
-      ? { ...options, tools: mergedToolsConfig, profileDir }
-      : { ...options, profileDir };
+      ? { ...options, tools: mergedToolsConfig, profileDir, provider: this.resolvedProvider }
+      : { ...options, profileDir, provider: this.resolvedProvider };
 
     const tools = resolveTools(this.toolsOptions);
     if (this.debug) {
@@ -427,6 +428,7 @@ export class Agent {
     this.refreshAuthState();
     this.output.state.lastAssistantText = "";
     this.currentUserDisplayPrompt = options?.displayPrompt;
+    this._isRunning = true;
 
     try {
       // Early validation: check API key before calling PiAgentCore.prompt(),
@@ -489,6 +491,7 @@ export class Agent {
         : undefined;
       return { text: this.output.state.lastAssistantText, thinking, error: this.agent.state.error };
     } finally {
+      this._isRunning = false;
       this.currentUserDisplayPrompt = undefined;
     }
   }
@@ -662,6 +665,40 @@ export class Agent {
   /** Whether the agent is currently executing an internal run */
   get isInternalRun(): boolean {
     return this._internalRun;
+  }
+
+  /** Whether a run (normal or internal) is currently executing inside _run(). */
+  get isRunning(): boolean {
+    return this._isRunning;
+  }
+
+  /** Whether the underlying PiAgentCore is currently streaming an LLM response. */
+  get isStreaming(): boolean {
+    return this.agent.state.isStreaming;
+  }
+
+  /**
+   * Queue a steering message to interrupt the agent mid-run.
+   * Delivered after current tool execution, skipping remaining tool calls.
+   * Safe to call from any context (does not require the run mutex).
+   */
+  steer(content: string): void {
+    const msg: UserMessage = { role: "user", content, timestamp: Date.now() };
+    this.agent.steer(msg);
+  }
+
+  /**
+   * Queue a follow-up message for after the current run finishes.
+   * Delivered only when the agent has no more tool calls or steering messages.
+   */
+  followUp(content: string): void {
+    const msg: UserMessage = { role: "user", content, timestamp: Date.now() };
+    this.agent.followUp(msg);
+  }
+
+  /** Whether the underlying PiAgentCore has queued steer/followUp messages. */
+  hasQueuedMessages(): boolean {
+    return this.agent.hasQueuedMessages();
   }
 
   /**
@@ -895,6 +932,13 @@ export class Agent {
 
     // Update internal state
     this.resolvedProvider = providerId;
+    // Keep toolsOptions.provider in sync so sessions_spawn inherits the current provider
+    this.toolsOptions = { ...this.toolsOptions, provider: providerId };
+
+    // Reload tools so sessions_spawn picks up the new provider in its closure.
+    // Without this, the existing tool instance still captures the old provider.
+    const tools = resolveTools(this.toolsOptions);
+    this.agent.setTools(tools);
 
     // Update session metadata (save original providerId, not alias-resolved)
     this.session.saveMeta({
@@ -906,7 +950,7 @@ export class Agent {
     });
 
     // Rebuild system prompt so runtime info reflects the new provider/model
-    const toolNames = (this.agent.state.tools ?? []).map((t: { name: string }) => t.name);
+    const toolNames = tools.map((t) => t.name);
     const systemPrompt = this.rebuildSystemPrompt(toolNames);
     if (systemPrompt) {
       this.agent.setSystemPrompt(systemPrompt);

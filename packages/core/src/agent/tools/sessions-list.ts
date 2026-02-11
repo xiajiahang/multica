@@ -127,7 +127,9 @@ export function createSessionsListTool(
     label: "List Subagent Runs",
     description:
       "List all subagent runs spawned by this session and their current status. " +
-      "Optionally pass a runId to get detailed information about a specific run.",
+      "Optionally pass a runId to get detailed information about a specific run. " +
+      "NOTE: Do NOT call this immediately after spawning subagents — results arrive automatically in your context when subagents complete. " +
+      "Only use this if a long time has passed or the user explicitly asks about subagent status.",
     parameters: SessionsListSchema,
     execute: async (_toolCallId, args) => {
       const { runId } = args as SessionsListArgs;
@@ -173,13 +175,52 @@ export function createSessionsListTool(
         };
       }
 
-      const lines = [`Subagent runs for this session: ${runs.length} total`, ""];
+      const someRunning = runs.some((r) => !r.endedAt);
+
+      // Build status lines for each run
+      const statusLines: string[] = [];
       for (let i = 0; i < runs.length; i++) {
-        lines.push(formatRunSummary(runs[i]!, i, now));
+        const r = runs[i]!;
+        const displayName = r.label || r.task.slice(0, 60);
+        const status = resolveStatus(r);
+        if (status === "running") {
+          const elapsed = r.startedAt ? formatElapsed(now - r.startedAt) : "just spawned";
+          statusLines.push(`  ${i + 1}. [RUNNING] "${displayName}" (${elapsed})`);
+        } else {
+          const elapsed = r.startedAt && r.endedAt ? formatElapsed(r.endedAt - r.startedAt) : "";
+          const findings = r.findingsCaptured
+            ? (r.findings ? r.findings.slice(0, 200) + (r.findings.length > 200 ? "…" : "") : "(no output)")
+            : "(findings not yet captured)";
+          statusLines.push(`  ${i + 1}. [${status.toUpperCase()}] "${displayName}" (${elapsed})\n      Findings: ${findings}`);
+        }
       }
 
+      const header = `Subagent runs for this session: ${runs.length} total`;
+      const body = statusLines.join("\n");
+
+      // If any subagents are still running, return status with wait instruction.
+      // We do NOT use steer() here — steer would cancel unrelated tool calls
+      // that the LLM may be processing in the same batch.
+      if (someRunning) {
+        const runningCount = runs.filter((r) => !r.endedAt).length;
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                header + "\n" + body + "\n\n" +
+                `STATUS: ${runningCount} subagent(s) still running. This is normal — they need time to complete.\n` +
+                "ACTION REQUIRED: Do NOT call sessions_list again. Results will be delivered into your context automatically when they finish.\n" +
+                "Do NOT attempt to do this work yourself — the subagents are handling it.",
+            },
+          ],
+          details: { runs: runs.map(toResultRun) },
+        };
+      }
+
+      // All completed — normal response
       return {
-        content: [{ type: "text", text: lines.join("\n") }],
+        content: [{ type: "text", text: header + "\n" + body }],
         details: { runs: runs.map(toResultRun) },
       };
     },

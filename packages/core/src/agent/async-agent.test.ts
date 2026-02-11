@@ -272,6 +272,18 @@ describe("AsyncAgent internal flow", () => {
     agent.close();
   });
 
+  it("does not persist assistant summary when result text is a NO_REPLY variant", async () => {
+    runInternalMock.mockResolvedValueOnce({ text: "NO_REPLY.", thinking: undefined, error: undefined });
+    const agent = new AsyncAgent();
+
+    agent.writeInternal("announce findings", { forwardAssistant: true, persistResponse: true });
+    await agent.waitForIdle();
+
+    expect(persistAssistantSummaryMock).not.toHaveBeenCalled();
+
+    agent.close();
+  });
+
   it("does not persist assistant summary when result text is empty", async () => {
     runInternalMock.mockResolvedValueOnce({ text: "  ", thinking: undefined, error: undefined });
     const agent = new AsyncAgent();

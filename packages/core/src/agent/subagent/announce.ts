@@ -16,6 +16,7 @@ import type {
   SubagentRunRecord,
   SubagentSystemPromptParams,
 } from "./types.js";
+import { enqueueAnnounce, DEFAULT_ANNOUNCE_SETTINGS } from "./announce-queue.js";
 
 /**
  * Build the system prompt injected into a subagent session.
@@ -275,7 +276,15 @@ export function formatCoalescedAnnouncementMessage(
 
 /**
  * Run the coalesced announcement flow for all completed runs of a requester.
- * Formats a single combined message and delivers it to the parent agent.
+ * Uses two-tier delivery:
+ *   1. Queue — if parent is busy (running or has pending writes), queue for
+ *      later drain via writeInternal (with debounce to batch nearby completions)
+ *   2. Direct — if parent is idle, send immediately via writeInternal
+ *
+ * All delivery uses writeInternal() which marks the announcement prompt as
+ * `internal: true` (hidden from UI). The assistant's summary response is
+ * forwarded to the real-time stream (`forwardAssistant: true`) so the user
+ * sees the result, and persisted to JSONL for future session loads.
  */
 export function runCoalescedAnnounceFlow(
   requesterSessionId: string,
@@ -293,11 +302,52 @@ export function runCoalescedAnnounceFlow(
       return false;
     }
 
-    parentAgent.writeInternal(message, { forwardAssistant: true, persistResponse: true });
+    // Tier 1: BUSY — parent is running or has pending writes
+    // Queue the announcement for delivery via writeInternal() after the parent
+    // finishes its current work. We do NOT use steer() (cancels unrelated tool
+    // calls) or followUp() (doesn't mark entries as internal, polluting the UI).
+    if (parentAgent.isRunning || parentAgent.getPendingWrites() > 0) {
+      enqueueAnnounce({
+        key: requesterSessionId,
+        item: {
+          prompt: message,
+          summaryLine: `${records.length} subagent(s) completed`,
+          enqueuedAt: Date.now(),
+          requesterSessionId,
+        },
+        settings: DEFAULT_ANNOUNCE_SETTINGS,
+        send: async (item) => sendAnnounceDirect(requesterSessionId, item.prompt),
+      });
+      console.log(`[SubagentAnnounce] Queued announcement for parent: ${requesterSessionId}`);
+      return true;
+    }
+
+    // Tier 2: IDLE — parent is idle, send directly via writeInternal
+    sendAnnounceDirect(requesterSessionId, message);
     return true;
   } catch (err) {
     console.error(`[SubagentAnnounce] Failed to coalesced-announce to parent:`, err);
     return false;
+  }
+}
+
+/**
+ * Send announcement directly to parent via writeInternal.
+ * Used as Tier 3 (idle) and as the queue drain callback.
+ */
+function sendAnnounceDirect(requesterSessionId: string, message: string): void {
+  try {
+    const hub = getHub();
+    const parentAgent = hub.getAgent(requesterSessionId);
+    if (!parentAgent || parentAgent.closed) {
+      console.warn(
+        `[SubagentAnnounce] Parent agent not found or closed for direct send: ${requesterSessionId}`,
+      );
+      return;
+    }
+    parentAgent.writeInternal(message, { forwardAssistant: true, persistResponse: true });
+  } catch (err) {
+    console.error(`[SubagentAnnounce] Failed direct announce to parent:`, err);
   }
 }
 

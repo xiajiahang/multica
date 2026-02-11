@@ -45,6 +45,9 @@ export type SubagentRunRecord = {
   findingsCaptured?: boolean | undefined;
   /** Whether the coalesced announcement has been sent to parent */
   announced?: boolean | undefined;
+  /** Announcement mode: "immediate" (default) announces per-completion,
+   *  "silent" defers until all silent runs from the same requester complete. */
+  announce?: "immediate" | "silent" | undefined;
 };
 
 /** Parameters for registering a new subagent run */
@@ -58,6 +61,8 @@ export type RegisterSubagentRunParams = {
   timeoutSeconds?: number | undefined;
   /** Callback invoked when the queue slot is acquired (used to defer childAgent.write). */
   start?: (() => void) | undefined;
+  /** Announcement mode: "immediate" (default) or "silent" (defer until all silent runs complete). */
+  announce?: "immediate" | "silent" | undefined;
 };
 
 /** Parameters for the announce flow */

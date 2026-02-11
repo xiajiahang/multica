@@ -266,8 +266,105 @@ describe("subagent registry — coalescing", () => {
   });
 });
 
+describe("subagent registry — silent announce mode", () => {
+  // Note: In tests (no Hub), watchChildAgent completes synchronously within
+  // registerSubagentRun(), so each run's lifecycle finishes before the next
+  // registration call. Multi-run coalescing requires async child agents and
+  // is validated in integration tests.
+
+  it("stores announce field on the record", () => {
+    const record = registerSubagentRun({
+      runId: "run-ann",
+      childSessionId: "child-ann",
+      requesterSessionId: "parent-1",
+      task: "Task",
+      announce: "silent",
+    });
+    expect(record.announce).toBe("silent");
+  });
+
+  it("defaults announce to undefined (immediate behavior)", () => {
+    const record = registerSubagentRun({
+      runId: "run-def",
+      childSessionId: "child-def",
+      requesterSessionId: "parent-1",
+      task: "Task",
+    });
+    expect(record.announce).toBeUndefined();
+  });
+
+  it("silent runs are announced via runCoalescedAnnounceFlow", async () => {
+    const announceModule = await import("./announce.js");
+    const spy = vi.spyOn(announceModule, "runCoalescedAnnounceFlow").mockReturnValue(true);
+
+    registerSubagentRun({
+      runId: "run-s1",
+      childSessionId: "child-s1",
+      requesterSessionId: "parent-1",
+      task: "Silent A",
+      announce: "silent",
+    });
+
+    await flushQueue();
+
+    // Silent run announced (via runCoalescedAnnounceFlow mock)
+    const silentCalls = spy.mock.calls.filter(
+      ([reqId, records]) =>
+        reqId === "parent-1" &&
+        records.some((r: { announce?: string }) => r.announce === "silent"),
+    );
+    expect(silentCalls.length).toBeGreaterThanOrEqual(1);
+
+    const runS1 = getSubagentRun("run-s1");
+    expect(runS1?.announced).toBe(true);
+    expect(runS1?.announce).toBe("silent");
+
+    spy.mockRestore();
+  });
+
+  it("immediate and silent runs are never mixed in the same announce call", async () => {
+    const announceModule = await import("./announce.js");
+    const spy = vi.spyOn(announceModule, "runCoalescedAnnounceFlow").mockReturnValue(true);
+
+    // Register immediate run, then silent run
+    registerSubagentRun({
+      runId: "run-imm",
+      childSessionId: "child-imm",
+      requesterSessionId: "parent-1",
+      task: "Immediate task",
+    });
+    registerSubagentRun({
+      runId: "run-s1",
+      childSessionId: "child-s1",
+      requesterSessionId: "parent-1",
+      task: "Silent task",
+      announce: "silent",
+    });
+
+    await flushQueue();
+
+    const calls = spy.mock.calls.filter(
+      ([reqId]) => reqId === "parent-1",
+    );
+
+    // Immediate and silent should never be in the same announce call
+    const mixedCalls = calls.filter(([, records]) => {
+      const hasImm = records.some((r: { announce?: string }) => r.announce !== "silent");
+      const hasSilent = records.some((r: { announce?: string }) => r.announce === "silent");
+      return hasImm && hasSilent;
+    });
+    expect(mixedCalls).toHaveLength(0);
+
+    // Both should be announced (in separate calls)
+    expect(getSubagentRun("run-imm")?.announced).toBe(true);
+    expect(getSubagentRun("run-s1")?.announced).toBe(true);
+
+    spy.mockRestore();
+  });
+});
+
 describe("subagent registry — post-announce cleanup", () => {
-  it("removes runs from registry after successful announcement", async () => {
+  it("keeps runs in registry after successful announcement with archiveAtMs", async () => {
     // Mock runCoalescedAnnounceFlow to succeed
     const announceModule = await import("./announce.js");
     const spy = vi.spyOn(announceModule, "runCoalescedAnnounceFlow").mockReturnValue(true);
@@ -288,11 +385,20 @@ describe("subagent registry — post-announce cleanup", () => {
 
     await flushQueue();
 
-    // Both runs should have been announced and removed from registry
+    // Both runs should have been announced but kept in registry with archiveAtMs
     expect(spy).toHaveBeenCalled();
-    expect(getSubagentRun("run-a")).toBeUndefined();
-    expect(getSubagentRun("run-b")).toBeUndefined();
-    expect(listSubagentRuns("parent-1")).toHaveLength(0);
+
+    const runA = getSubagentRun("run-a");
+    const runB = getSubagentRun("run-b");
+    expect(runA).toBeDefined();
+    expect(runB).toBeDefined();
+    expect(runA!.announced).toBe(true);
+    expect(runB!.announced).toBe(true);
+    expect(runA!.archiveAtMs).toBeGreaterThan(Date.now());
+    expect(runB!.archiveAtMs).toBeGreaterThan(Date.now());
+
+    // Records are still queryable
+    expect(listSubagentRuns("parent-1")).toHaveLength(2);
 
     spy.mockRestore();
   });

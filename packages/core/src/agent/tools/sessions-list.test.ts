@@ -73,9 +73,9 @@ describe("sessions_list tool", () => {
     const text = result.content[0]!;
     expect(text.type).toBe("text");
     expect((text as { text: string }).text).toContain("3 total");
-    expect((text as { text: string }).text).toContain("[running]");
-    expect((text as { text: string }).text).toContain("[ok]");
-    expect((text as { text: string }).text).toContain("[error]");
+    expect((text as { text: string }).text).toContain("[RUNNING]");
+    expect((text as { text: string }).text).toContain("[OK]");
+    expect((text as { text: string }).text).toContain("[ERROR]");
     expect((text as { text: string }).text).toContain("Code Review");
     expect((text as { text: string }).text).toContain("Test Analysis");
     expect((text as { text: string }).text).toContain("Lint Check");

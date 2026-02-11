@@ -35,6 +35,15 @@ const SessionsSpawnSchema = Type.Object({
       minimum: 0,
     }),
   ),
+  announce: Type.Optional(
+    Type.Union([Type.Literal("immediate"), Type.Literal("silent")], {
+      description:
+        "Announcement mode. 'immediate' (default): findings delivered as each subagent completes. " +
+        "'silent': defer all announcements until every silent subagent from this session finishes, " +
+        "then deliver one combined report. Use 'silent' when spawning multiple subagents to collect " +
+        "data in parallel and you want to summarize everything at once.",
+    }),
+  ),
 });
 
 type SessionsSpawnArgs = {
@@ -43,6 +52,7 @@ type SessionsSpawnArgs = {
   model?: string;
   cleanup?: "delete" | "keep";
   timeoutSeconds?: number;
+  announce?: "immediate" | "silent";
 };
 
 export type SessionsSpawnResult = {
@@ -57,6 +67,8 @@ export interface CreateSessionsSpawnToolOptions {
   isSubagent?: boolean;
   /** Session ID of the current (requester) agent */
   sessionId?: string;
+  /** Resolved provider ID of the parent agent (inherited by subagents) */
+  provider?: string;
 }
 
 export function createSessionsSpawnTool(
@@ -67,11 +79,13 @@ export function createSessionsSpawnTool(
     label: "Spawn Subagent",
     description:
       "Spawn a background subagent to handle a specific task. The subagent runs in an isolated session with its own tool set. " +
-      "When it completes, its findings are announced back to you automatically. " +
+      "When it completes, its findings are delivered directly into your context automatically — you do NOT need to poll or check. " +
+      "IMPORTANT: After spawning subagents, continue with any other immediate tasks you have, or simply finish your turn and wait. " +
+      "Do NOT call sessions_list to check on subagents you just spawned — results take time and will arrive on their own. " +
       "Use this for parallelizable work, long-running analysis, or tasks that benefit from isolation.",
     parameters: SessionsSpawnSchema,
     execute: async (_toolCallId, args) => {
-      const { task, label, model, cleanup = "delete", timeoutSeconds } = args as SessionsSpawnArgs;
+      const { task, label, model, cleanup = "delete", timeoutSeconds, announce } = args as SessionsSpawnArgs;
 
       // Guard: subagents cannot spawn subagents
       if (options.isSubagent) {
@@ -107,6 +121,7 @@ export function createSessionsSpawnTool(
         const childAgent = hub.createSubagent(childSessionId, {
           systemPrompt,
           model,
+          provider: options.provider,
         });
 
         // Register the run for lifecycle tracking.
@@ -120,6 +135,7 @@ export function createSessionsSpawnTool(
           label,
           cleanup,
           timeoutSeconds,
+          announce,
           start: () => childAgent.write(task),
         });
 
@@ -127,7 +143,7 @@ export function createSessionsSpawnTool(
           content: [
             {
               type: "text",
-              text: `Subagent spawned successfully.\n\nRun ID: ${runId}\nSession: ${childSessionId}\nTask: ${label || task.slice(0, 80)}\n\nThe subagent is now working in the background. You will receive its findings when it completes.`,
+              text: `Subagent spawned successfully.\n\nRun ID: ${runId}\nSession: ${childSessionId}\nTask: ${label || task.slice(0, 80)}\n\nThe subagent is now working in the background. Its findings will be delivered directly into your context when it completes — do NOT poll or call sessions_list for it. Continue with other tasks or finish your turn.`,
             },
           ],
           details: {

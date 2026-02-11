@@ -101,6 +101,7 @@ export function registerSubagentRun(params: RegisterSubagentRunParams): Subagent
     label,
     cleanup = "delete",
     timeoutSeconds,
+    announce,
     start,
   } = params;
 
@@ -111,6 +112,7 @@ export function registerSubagentRun(params: RegisterSubagentRunParams): Subagent
     task,
     label,
     cleanup,
+    announce,
     createdAt: Date.now(),
   };
 
@@ -121,7 +123,9 @@ export function registerSubagentRun(params: RegisterSubagentRunParams): Subagent
   // Enqueue in the subagent lane — the start callback and watchChildAgent
   // only execute once a concurrency slot is available.
   void enqueueInLane(SubagentLane.Subagent, async () => {
+    console.log(`[SubagentRegistry] Lane slot acquired for ${runId}, calling start()`);
     start?.();
+    console.log(`[SubagentRegistry] start() returned, entering watchChildAgent`);
     return watchChildAgent(record, timeoutSeconds);
   });
 
@@ -248,12 +252,26 @@ function watchChildAgent(record: SubagentRunRecord, timeoutSeconds?: number): Pr
     // Wait for the child agent's task queue to drain (task completion),
     // then trigger announce flow. Uses waitForIdle() instead of consuming
     // the stream (which would conflict with Hub.consumeAgent).
+    console.log(`[SubagentRegistry] waitForIdle() called for child ${childSessionId}, pendingWrites=${childAgent.getPendingWrites()}`);
     childAgent.waitForIdle().then(
-      () => cleanup({ status: "ok" }),
-      (err) => cleanup({
-        status: "error",
-        error: err instanceof Error ? err.message : String(err),
-      }),
+      () => {
+        const runtime = Date.now() - (record.startedAt ?? 0);
+        const runError = childAgent.lastRunError;
+        if (runError) {
+          console.log(`[SubagentRegistry] waitForIdle() resolved for child ${childSessionId} with error (runtime: ${runtime}ms): ${runError}`);
+          cleanup({ status: "error", error: runError });
+        } else {
+          console.log(`[SubagentRegistry] waitForIdle() resolved OK for child ${childSessionId} (runtime: ${runtime}ms)`);
+          cleanup({ status: "ok" });
+        }
+      },
+      (err) => {
+        console.error(`[SubagentRegistry] waitForIdle() rejected for child ${childSessionId}:`, err);
+        cleanup({
+          status: "error",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      },
     );
 
     // Also handle explicit close (e.g., timeout kill, Hub shutdown)
@@ -280,43 +298,57 @@ function captureFindings(record: SubagentRunRecord): void {
 }
 
 /**
- * Phase 2: Check if all unannounced runs for this requester have completed.
- * If so, send a single coalesced announcement to the parent.
+ * Phase 2: Announce completed-but-unannounced runs.
+ *
+ * Runs with announce="silent" are held back until ALL silent runs from the
+ * same requester have completed. All other runs (immediate / undefined) are
+ * announced per-completion as before.
  */
 function checkAndAnnounce(requesterSessionId: string): void {
   const allRuns = listSubagentRuns(requesterSessionId);
 
-  // Only consider unannounced runs
-  const pending = allRuns.filter(r => !r.announced);
-  if (pending.length === 0) return;
+  // ── Immediate runs: announce per-completion (default behavior) ──
+  const immediateReady = allRuns.filter(
+    r => !r.announced && r.endedAt !== undefined && r.findingsCaptured && r.announce !== "silent",
+  );
+  if (immediateReady.length > 0) {
+    announceGroup(requesterSessionId, immediateReady);
+  }
 
-  // Are all unannounced runs done?
-  const allDone = pending.every(r => r.endedAt !== undefined);
-  if (!allDone) return;
+  // ── Silent runs: announce only when ALL silent runs are done ──
+  const silentRuns = allRuns.filter(r => r.announce === "silent");
+  const unannouncedSilent = silentRuns.filter(r => !r.announced);
+  const silentReady = unannouncedSilent.filter(
+    r => r.endedAt !== undefined && r.findingsCaptured,
+  );
 
-  // Have all had findings captured?
-  const allCaptured = pending.every(r => r.findingsCaptured);
-  if (!allCaptured) return;
+  // All unannounced silent runs must be ready (ended + findings captured)
+  if (silentReady.length > 0 && silentReady.length === unannouncedSilent.length) {
+    announceGroup(requesterSessionId, silentReady);
+  }
+}
 
-  // All done — send coalesced announcement
-  const announced = runCoalescedAnnounceFlow(requesterSessionId, pending);
+/** Announce a group of runs and mark them as announced. */
+function announceGroup(requesterSessionId: string, runs: SubagentRunRecord[]): void {
+  const announced = runCoalescedAnnounceFlow(requesterSessionId, runs);
 
   if (announced) {
-    for (const r of pending) {
+    for (const r of runs) {
       r.announced = true;
       r.cleanupHandled = true;
-      // Remove from registry immediately — findings already delivered to parent
-      subagentRuns.delete(r.runId);
+      // Keep records for querying via sessions_list; let sweeper archive later
+      r.archiveAtMs = Date.now() + DEFAULT_ARCHIVE_AFTER_MS;
     }
     persist();
-    if (subagentRuns.size === 0) {
-      stopSweeper();
-    }
   } else {
+    // Allow retry — mark cleanupHandled false so initSubagentRegistry() retries
+    for (const r of runs) {
+      r.cleanupHandled = false;
+    }
+    persist();
     console.warn(
-      `[SubagentRegistry] Coalesced announce failed for requester ${requesterSessionId}`,
+      `[SubagentRegistry] Announce failed for requester ${requesterSessionId}`,
     );
-    // Leave announced=false so initSubagentRegistry() can retry on restart
   }
 }
 

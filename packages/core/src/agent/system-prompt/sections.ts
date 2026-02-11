@@ -262,8 +262,23 @@ export function buildConditionalToolSections(
     lines.push(
       "## Sub-Agents",
       "If a task is complex or long-running, spawn a sub-agent. It will do the work and report back when done.",
-      "You can check on running sub-agents at any time.",
+      "IMPORTANT: After spawning sub-agents, do NOT immediately check on them with sessions_list. " +
+        "Results are delivered directly into your context automatically when the sub-agent finishes. " +
+        "Continue with other tasks or finish your turn and wait for the results to arrive.",
+      "You may use sessions_list to check on sub-agents only if a long time has passed or the user explicitly asks about their status.",
       "Sub-agents cannot spawn nested sub-agents.",
+      "",
+      "### Timeout Guidelines",
+      "Set timeoutSeconds generously — a sub-agent that times out loses all its work.",
+      "- Simple tasks (search, read, summarize): 600 (10 min, the default)",
+      "- Moderate tasks (multi-step research, file downloads + analysis): 900–1200 (15–20 min)",
+      "- Complex tasks (code generation, PDF creation, multi-file operations): 1200–1800 (20–30 min)",
+      "When in doubt, use a longer timeout. It is always better to wait longer than to lose completed work.",
+      "",
+      "### Announce Modes",
+      "- `announce: \"immediate\"` (default): Each sub-agent's findings are delivered to you as soon as it completes.",
+      "- `announce: \"silent\"`: All findings are held back until every silent sub-agent finishes, then delivered as ONE combined report.",
+      "Use \"silent\" when you want to collect data from multiple sub-agents first, then summarize everything at once.",
       "",
     );
   }
@@ -377,6 +392,10 @@ export function buildSubagentSection(
     "## Subagent Rules",
     "- Stay focused on the assigned task below.",
     "- Complete the task thoroughly and report your findings.",
+    "- If you encounter errors (missing API keys, permission denied, tool failures, etc.), " +
+      "you MUST explicitly report them in your final message. " +
+      "State exactly what failed and what is needed to fix it — " +
+      "the parent agent relies on your final message to understand what happened.",
     "- Do NOT initiate side actions unrelated to the task.",
     "- Do NOT attempt to communicate with the user directly.",
     "- Do NOT spawn nested subagents.",
