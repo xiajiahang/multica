@@ -29,9 +29,9 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("antialiased font-sans", geist.variable, geistMono.variable)}
+      className={cn("antialiased font-sans h-full overflow-hidden", geist.variable, geistMono.variable)}
     >
-      <body>
+      <body className="h-full overflow-hidden">
         <ThemeProvider>
           <AuthInitializer>
             <WSProvider>{children}</WSProvider>

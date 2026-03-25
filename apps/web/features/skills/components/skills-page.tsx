@@ -298,17 +298,17 @@ function SkillDetail({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 min-h-0 flex-col">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
             <Sparkles className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div>
-            <h2 className="text-sm font-semibold">{skill.name}</h2>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold truncate">{skill.name}</h2>
             {skill.description && (
-              <p className="text-xs text-muted-foreground">{skill.description}</p>
+              <p className="text-xs text-muted-foreground truncate">{skill.description}</p>
             )}
           </div>
         </div>
@@ -380,15 +380,15 @@ function SkillDetail({
         <Dialog open onOpenChange={(v) => { if (!v) setConfirmDelete(false); }}>
           <DialogContent className="max-w-sm" showCloseButton={false}>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
                 <AlertCircle className="h-5 w-5 text-destructive" />
               </div>
-              <div>
-                <h3 className="text-sm font-semibold">Delete skill?</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+              <DialogHeader className="flex-1 gap-1">
+                <DialogTitle className="text-sm font-semibold">Delete skill?</DialogTitle>
+                <DialogDescription className="text-xs">
                   This will permanently delete &quot;{skill.name}&quot; and remove it from all agents.
-                </p>
-              </div>
+                </DialogDescription>
+              </DialogHeader>
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
@@ -469,7 +469,7 @@ export default function SkillsPage() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-1 min-h-0">
       {/* Left column — skill list */}
       <div className="w-72 shrink-0 overflow-y-auto border-r">
         <div className="flex h-12 items-center justify-between border-b px-4">

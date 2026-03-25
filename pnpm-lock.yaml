@@ -113,7 +113,7 @@ importers:
         version: 1.0.1(react@19.2.3)
       next:
         specifier: ^16.1.6
-        version: 16.2.0(@babel/core@7.29.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 16.2.0(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -197,46 +197,11 @@ importers:
         specifier: ^4.1.0
         version: 4.1.0(@types/node@25.5.0)(jsdom@29.0.1(@noble/hashes@1.8.0))(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.1(@types/node@25.5.0)(jiti@2.6.1))
 
-  packages/hooks:
-    dependencies:
-      '@multica/sdk':
-        specifier: workspace:*
-        version: link:../sdk
-      '@multica/store':
-        specifier: workspace:*
-        version: link:../store
-      '@multica/types':
-        specifier: workspace:*
-        version: link:../types
-      react:
-        specifier: 'catalog:'
-        version: 19.2.3
-    devDependencies:
-      '@types/react':
-        specifier: ^19.2.0
-        version: 19.2.14
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-
   packages/sdk:
     dependencies:
       '@multica/types':
         specifier: workspace:*
         version: link:../types
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-
-  packages/store:
-    dependencies:
-      '@multica/types':
-        specifier: workspace:*
-        version: link:../types
-      zustand:
-        specifier: 'catalog:'
-        version: 5.0.12(@types/react@19.2.14)(immer@11.1.4)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -6163,7 +6128,7 @@ snapshots:
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
 
-  next@16.2.0(@babel/core@7.29.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+  next@16.2.0(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
       '@next/env': 16.2.0
       '@swc/helpers': 0.5.15
@@ -6172,7 +6137,7 @@ snapshots:
       postcss: 8.4.31
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
-      styled-jsx: 5.1.6(@babel/core@7.29.0)(react@19.2.3)
+      styled-jsx: 5.1.6(react@19.2.3)
     optionalDependencies:
       '@next/swc-darwin-arm64': 16.2.0
       '@next/swc-darwin-x64': 16.2.0
@@ -6838,12 +6803,10 @@ snapshots:
     dependencies:
       inline-style-parser: 0.2.7
 
-  styled-jsx@5.1.6(@babel/core@7.29.0)(react@19.2.3):
+  styled-jsx@5.1.6(react@19.2.3):
     dependencies:
       client-only: 0.0.1
       react: 19.2.3
-    optionalDependencies:
-      '@babel/core': 7.29.0
 
   symbol-tree@3.2.4: {}
 

@@ -290,7 +290,7 @@ export default function KnowledgeBasePage() {
   const selected = documents.find((d) => d.id === selectedId) ?? null;
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-1 min-h-0">
       {/* Left: Document list */}
       <div className="w-72 shrink-0 overflow-y-auto border-r">
         <div className="flex h-11 items-center justify-between border-b px-4">

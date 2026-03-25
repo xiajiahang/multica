@@ -107,11 +107,6 @@
   @apply w-full max-w-4xl mx-auto;
 }
 
-/* Sidebar: remove default padding from inset container */
-[data-slot="sidebar-container"] {
-  padding: 0 !important;
-}
-
 /* Tool status: running glow pulse */
 @keyframes glow-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--tool-running); }

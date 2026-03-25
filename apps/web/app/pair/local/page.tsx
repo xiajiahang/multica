@@ -142,7 +142,7 @@ function LocalDaemonPairPageContent() {
                   <Label className="mb-2">Workspace</Label>
                   <Select value={selectedWorkspaceId} onValueChange={(v) => setSelectedWorkspaceId(v ?? "")}>
                     <SelectTrigger className="w-full">
-                      <span className="flex flex-1 text-left">
+                      <span className="flex flex-1 min-w-0 truncate text-left">
                         {selectedWorkspace?.name ?? "Select workspace"}
                       </span>
                     </SelectTrigger>

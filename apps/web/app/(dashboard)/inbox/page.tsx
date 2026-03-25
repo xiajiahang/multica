@@ -122,7 +122,7 @@ function InboxDetail({
       <div className="flex items-start gap-3">
         <Icon className={`mt-1 h-5 w-5 shrink-0 ${colorClass}`} />
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold">{item.title}</h2>
+          <h2 className="text-lg font-semibold truncate">{item.title}</h2>
           <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
             <span className={colorClass}>{severityLabel[item.severity]}</span>
             <span>·</span>
@@ -223,7 +223,7 @@ export default function InboxPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full">
+      <div className="flex flex-1 min-h-0">
         <div className="w-80 shrink-0 border-r">
           <div className="flex h-12 items-center border-b px-4">
             <Skeleton className="h-5 w-16" />
@@ -250,7 +250,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-1 min-h-0">
       {/* Left column — inbox list */}
       <div className="w-80 shrink-0 overflow-y-auto border-r">
         <div className="flex h-12 items-center border-b px-4">

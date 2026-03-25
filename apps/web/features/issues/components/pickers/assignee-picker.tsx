@@ -57,15 +57,14 @@ export function AssigneePicker({
         assigneeType && assigneeId ? (
           <>
             <div
-              className={`inline-flex shrink-0 items-center justify-center rounded-full font-medium text-[8px] ${
+              className={`inline-flex shrink-0 items-center justify-center rounded-full font-medium text-[8px] size-[18px] ${
                 assigneeType === "agent"
-                  ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+                  ? "bg-info/10 text-info"
                   : "bg-muted text-muted-foreground"
               }`}
-              style={{ width: 18, height: 18 }}
             >
               {assigneeType === "agent" ? (
-                <Bot style={{ width: 10, height: 10 }} />
+                <Bot className="size-2.5" />
               ) : (
                 getActorInitials(assigneeType, assigneeId)
               )}
@@ -128,8 +127,8 @@ export function AssigneePicker({
                 setOpen(false);
               }}
             >
-              <div className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
-                <Bot style={{ width: 10, height: 10 }} />
+              <div className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-info/10 text-info">
+                <Bot className="size-2.5" />
               </div>
               <span>{a.name}</span>
             </PickerItem>

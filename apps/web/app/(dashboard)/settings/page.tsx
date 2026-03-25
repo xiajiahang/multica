@@ -68,8 +68,8 @@ function MemberRow({
           .slice(0, 2)}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium">{member.name}</div>
-        <div className="text-xs text-muted-foreground">{member.email}</div>
+        <div className="text-sm font-medium truncate">{member.name}</div>
+        <div className="text-xs text-muted-foreground truncate">{member.email}</div>
       </div>
       {canEditRole ? (
         <Select value={member.role} onValueChange={(value) => onRoleChange(value as MemberRole)} disabled={busy}>
@@ -274,6 +274,7 @@ export default function SettingsPage() {
   if (!workspace) return null;
 
   return (
+    <div className="flex-1 min-h-0 overflow-y-auto">
     <div className="mx-auto max-w-2xl p-6 space-y-8">
       {/* Page header */}
       <div className="flex items-center gap-2">
@@ -522,6 +523,7 @@ export default function SettingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
     </div>
   );
 }

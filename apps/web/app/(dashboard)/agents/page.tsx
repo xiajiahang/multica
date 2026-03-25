@@ -1002,7 +1002,7 @@ function AgentDetail({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold">{agent.name}</h2>
+            <h2 className="text-base font-semibold truncate">{agent.name}</h2>
             <span className={`flex items-center gap-1.5 text-xs ${st.color}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
               {st.label}
@@ -1017,7 +1017,7 @@ function AgentDetail({
             </span>
           </div>
           {agent.description && (
-            <p className="mt-1 text-sm text-muted-foreground">{agent.description}</p>
+            <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{agent.description}</p>
           )}
         </div>
         <div className="relative">
@@ -1091,15 +1091,15 @@ function AgentDetail({
         <Dialog open onOpenChange={(v) => { if (!v) setConfirmDelete(false); }}>
           <DialogContent className="max-w-sm" showCloseButton={false}>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
                 <AlertCircle className="h-5 w-5 text-destructive" />
               </div>
-              <div>
-                <h3 className="text-sm font-semibold">Delete agent?</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+              <DialogHeader className="flex-1 gap-1">
+                <DialogTitle className="text-sm font-semibold">Delete agent?</DialogTitle>
+                <DialogDescription className="text-xs">
                   This will permanently delete &quot;{agent.name}&quot; and all its configuration.
-                </p>
-              </div>
+                </DialogDescription>
+              </DialogHeader>
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
@@ -1184,14 +1184,14 @@ export default function AgentsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <div className="flex flex-1 min-h-0 items-center justify-center text-sm text-muted-foreground">
         Loading...
       </div>
     );
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-1 min-h-0">
       {/* Left column — agent list */}
       <div className="w-72 shrink-0 overflow-y-auto border-r">
         <div className="flex h-12 items-center justify-between border-b px-4">

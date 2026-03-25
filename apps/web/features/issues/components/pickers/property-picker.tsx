@@ -62,6 +62,7 @@ export function PropertyPicker({
                 onSearchChange?.(e.target.value);
               }}
               placeholder={searchPlaceholder}
+              aria-label="Filter options"
               className="w-full bg-transparent text-[13px] placeholder:text-muted-foreground outline-none"
             />
           </div>

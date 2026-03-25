@@ -36,7 +36,6 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-  TooltipProvider,
 } from "@/components/ui/tooltip";
 import { ActorAvatar } from "@/components/common/actor-avatar";
 import type { Issue, Comment, UpdateIssueRequest } from "@multica/types";
@@ -204,6 +203,7 @@ function AcceptanceCriteriaEditor({
             onChange={(e) => setNewItem(e.target.value)}
             onBlur={() => { if (!newItem.trim()) setAdding(false); }}
             placeholder="Add criteria..."
+            aria-label="Add acceptance criteria"
             className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
           />
         </form>
@@ -286,6 +286,7 @@ function ContextRefsEditor({
             onChange={(e) => setNewRef(e.target.value)}
             onBlur={() => { if (!newRef.trim()) setAdding(false); }}
             placeholder="Add reference URL..."
+            aria-label="Add context reference URL"
             className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
           />
         </form>
@@ -467,7 +468,7 @@ export default function IssueDetailPage({
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <div className="flex flex-1 min-h-0 items-center justify-center text-sm text-muted-foreground">
         Loading...
       </div>
     );
@@ -475,14 +476,14 @@ export default function IssueDetailPage({
 
   if (!issue) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <div className="flex flex-1 min-h-0 items-center justify-center text-sm text-muted-foreground">
         Issue not found
       </div>
     );
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-1 min-h-0">
       {/* LEFT: Content area */}
       <div className="flex-1 overflow-y-auto">
         {/* Header bar */}
@@ -617,20 +618,18 @@ export default function IssueDetailPage({
                       <span className="text-[13px] font-medium">
                         {getActorName(comment.author_type, comment.author_id)}
                       </span>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <span className="text-[12px] text-muted-foreground cursor-default">
-                                {timeAgo(comment.created_at)}
-                              </span>
-                            }
-                          />
-                          <TooltipContent side="top">
-                            {new Date(comment.created_at).toLocaleString()}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <span className="text-[12px] text-muted-foreground cursor-default">
+                              {timeAgo(comment.created_at)}
+                            </span>
+                          }
+                        />
+                        <TooltipContent side="top">
+                          {new Date(comment.created_at).toLocaleString()}
+                        </TooltipContent>
+                      </Tooltip>
                       {isOwn && (
                         <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Button
@@ -658,6 +657,7 @@ export default function IssueDetailPage({
                           autoFocus
                           value={editContent}
                           onChange={(e) => setEditContent(e.target.value)}
+                          aria-label="Edit comment"
                           className="w-full text-[13px] bg-transparent border-b outline-none"
                           onKeyDown={(e) => { if (e.key === "Escape") setEditingCommentId(null); }}
                         />

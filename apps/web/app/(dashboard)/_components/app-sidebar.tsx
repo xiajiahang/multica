@@ -13,8 +13,10 @@ import {
   Plus,
   Check,
   Sparkles,
+  Search,
+  SquarePen,
 } from "lucide-react";
-import { MulticaIcon } from "@/components/multica-icon";
+import { WorkspaceAvatar } from "@/features/workspace";
 import {
   Sidebar,
   SidebarContent,
@@ -35,6 +37,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/features/auth";
 import { useWorkspaceStore } from "@/features/workspace";
 import { useInboxStore } from "@/features/inbox";
@@ -68,24 +71,24 @@ export function AppSidebar() {
   };
 
   return (
-    <>
       <Sidebar variant="inset">
         {/* Workspace Switcher */}
         <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <SidebarMenuButton size="lg">
-                      <MulticaIcon className="size-4" noSpin />
-                      <span className="flex-1 truncate font-semibold">
-                        {workspace?.name ?? "Multica"}
-                      </span>
-                      <ChevronDown className="size-4" />
-                    </SidebarMenuButton>
-                  }
-                />
+          <div className="flex items-center gap-4">
+            <SidebarMenu className="min-w-0 flex-1">
+              <SidebarMenuItem>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <SidebarMenuButton>
+                        <WorkspaceAvatar name={workspace?.name ?? "M"} size="sm" />
+                        <span className="flex-1 truncate font-medium">
+                          {workspace?.name ?? "Multica"}
+                        </span>
+                        <ChevronDown className="size-3 text-muted-foreground" />
+                      </SidebarMenuButton>
+                    }
+                  />
                 <DropdownMenuContent
                   className="w-52"
                   align="start"
@@ -99,8 +102,28 @@ export function AppSidebar() {
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    <DropdownMenuItem
+                      render={<Link href="/settings" />}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      Settings
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup className="group/ws-section">
+                    <DropdownMenuLabel className="flex items-center text-xs text-muted-foreground">
                       Workspaces
+                      <Tooltip>
+                        <TooltipTrigger
+                          className="ml-auto opacity-0 group-hover/ws-section:opacity-100 transition-opacity rounded hover:bg-accent p-0.5"
+                          onClick={() => useModalStore.getState().open("create-workspace")}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          Create workspace
+                        </TooltipContent>
+                      </Tooltip>
                     </DropdownMenuLabel>
                     {workspaces.map((ws) => (
                       <DropdownMenuItem
@@ -111,46 +134,52 @@ export function AppSidebar() {
                           }
                         }}
                       >
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted text-[10px] font-semibold">
-                          {ws.name.charAt(0).toUpperCase()}
-                        </span>
+                        <WorkspaceAvatar name={ws.name} size="sm" />
                         <span className="flex-1 truncate">{ws.name}</span>
                         {ws.id === workspace?.id && (
                           <Check className="h-3.5 w-3.5 text-primary" />
                         )}
                       </DropdownMenuItem>
                     ))}
-                    <DropdownMenuItem
-                      onClick={() => useModalStore.getState().open("create-workspace")}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Create workspace
-                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      render={<Link href="/settings" />}
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                      Settings
-                    </DropdownMenuItem>
                     <DropdownMenuItem variant="destructive" onClick={logout}>
                       <LogOut className="h-3.5 w-3.5" />
-                      Sign out
+                      Log out
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
-              </DropdownMenu>
-            </SidebarMenuItem>
-          </SidebarMenu>
+                </DropdownMenu>
+              </SidebarMenuItem>
+            </SidebarMenu>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                >
+                  <Search className="size-4" />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Search</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  className="flex h-7 w-7 items-center justify-center rounded-lg bg-background text-foreground shadow-sm hover:bg-accent"
+                  onClick={() => useModalStore.getState().open("create-issue")}
+                >
+                  <SquarePen className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">New issue</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
         </SidebarHeader>
 
         {/* Navigation */}
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-0.5">
                 {navItems.map((item) => {
                   const isActive =
                     pathname === item.href ||
@@ -160,6 +189,7 @@ export function AppSidebar() {
                       <SidebarMenuButton
                         isActive={isActive}
                         render={<Link href={item.href} />}
+                        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
                       >
                         <item.icon />
                         <span>{item.label}</span>
@@ -198,6 +228,5 @@ export function AppSidebar() {
           )}
         </SidebarFooter>
       </Sidebar>
-    </>
   );
 }

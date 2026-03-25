@@ -231,7 +231,7 @@ function BoardView({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-full gap-3 overflow-x-auto p-4">
+      <div className="flex flex-1 min-h-0 gap-3 overflow-x-auto p-4">
         {visibleStatuses.map((status) => (
           <DroppableColumn
             key={status}
@@ -360,7 +360,7 @@ export default function IssuesPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex flex-1 min-h-0 flex-col">
         <div className="flex h-11 shrink-0 items-center justify-between border-b px-4">
           <Skeleton className="h-5 w-24" />
           <Skeleton className="h-8 w-24" />
@@ -379,7 +379,7 @@ export default function IssuesPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 min-h-0 flex-col">
       {/* Toolbar */}
       <div className="flex h-11 shrink-0 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">

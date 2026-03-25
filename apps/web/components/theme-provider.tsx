@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 function ThemeProvider({
   children,
@@ -16,7 +17,9 @@ function ThemeProvider({
       {...props}
     >
       <ThemeHotkey />
-      {children}
+      <TooltipProvider>
+        {children}
+      </TooltipProvider>
     </NextThemesProvider>
   )
 }
