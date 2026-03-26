@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -103,7 +105,15 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 
 	port := listener.Addr().(*net.TCPAddr).Port
 	callbackURL := fmt.Sprintf("http://localhost:%d/callback", port)
-	loginURL := fmt.Sprintf("%s/login?cli_callback=%s", appURL, url.QueryEscape(callbackURL))
+
+	// Generate a random state parameter for CSRF protection.
+	stateBytes := make([]byte, 16)
+	if _, err := rand.Read(stateBytes); err != nil {
+		return fmt.Errorf("failed to generate state: %w", err)
+	}
+	state := hex.EncodeToString(stateBytes)
+
+	loginURL := fmt.Sprintf("%s/login?cli_callback=%s&cli_state=%s", appURL, url.QueryEscape(callbackURL), url.QueryEscape(state))
 
 	// Channel to receive the JWT from the browser callback.
 	jwtCh := make(chan string, 1)
@@ -114,6 +124,11 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 		token := r.URL.Query().Get("token")
 		if token == "" {
 			http.Error(w, "missing token", http.StatusBadRequest)
+			return
+		}
+		returnedState := r.URL.Query().Get("state")
+		if returnedState != state {
+			http.Error(w, "invalid state parameter", http.StatusBadRequest)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
