@@ -3,3 +3,6 @@ export { PriorityIcon } from "./priority-icon";
 export { StatusPicker, PriorityPicker, AssigneePicker, DueDatePicker } from "./pickers";
 export { IssueDetail } from "./issue-detail";
 export { IssuesPage } from "./issues-page";
+export { CommentCard } from "./comment-card";
+export { CommentInput } from "./comment-input";
+export { ReplyInput } from "./reply-input";

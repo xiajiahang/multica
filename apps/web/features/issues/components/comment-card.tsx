@@ -184,7 +184,7 @@ function CommentCard({
   collectReplies(entry.id);
 
   return (
-    <Card className={`overflow-hidden${entry.id.startsWith("temp-") ? " opacity-60" : ""}`}>
+    <Card className={`!py-0 overflow-hidden${entry.id.startsWith("temp-") ? " opacity-60" : ""}`}>
       {/* Parent comment */}
       <div className="px-4">
         <CommentRow
@@ -197,7 +197,7 @@ function CommentCard({
 
       {/* Replies — flat, separated by border */}
       {allNestedReplies.map((reply) => (
-        <div key={reply.id} className="border-t px-4">
+        <div key={reply.id} className="border-t border-border/50 px-4">
           <CommentRow
             entry={reply}
             currentUserId={currentUserId}
@@ -208,7 +208,7 @@ function CommentCard({
       ))}
 
       {/* Reply input — always visible at bottom */}
-      <div className="border-t px-4 py-2">
+      <div className="border-t border-border/50 px-4 py-2.5">
         <ReplyInput
           placeholder="Leave a reply..."
           size="sm"
