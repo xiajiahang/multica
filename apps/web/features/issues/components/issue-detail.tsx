@@ -60,6 +60,7 @@ import { ALL_STATUSES, STATUS_CONFIG, PRIORITY_ORDER, PRIORITY_CONFIG } from "@/
 import { StatusIcon, PriorityIcon, DueDatePicker } from "@/features/issues/components";
 import { CommentCard } from "./comment-card";
 import { CommentInput } from "./comment-input";
+import { AgentLiveCard } from "./agent-live-card";
 import { api } from "@/shared/api";
 import { useAuthStore } from "@/features/auth";
 import { useWorkspaceStore, useActorName } from "@/features/workspace";
@@ -854,6 +855,16 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                   </PopoverContent>
                 </Popover>
               </div>
+            </div>
+
+            {/* Agent live output */}
+            <div className="mt-4">
+              <AgentLiveCard
+                issueId={id}
+                assigneeType={issue.assignee_type}
+                assigneeId={issue.assignee_id}
+                agentName={issue.assignee_type === "agent" && issue.assignee_id ? getActorName("agent", issue.assignee_id) : undefined}
+              />
             </div>
 
             {/* Timeline entries */}

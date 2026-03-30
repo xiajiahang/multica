@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -384,4 +385,121 @@ func (h *Handler) FailTask(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("task failed", "task_id", taskID, "agent_id", uuidToString(task.AgentID), "task_error", req.Error)
 	writeJSON(w, http.StatusOK, taskToResponse(*task))
+}
+
+// ---------------------------------------------------------------------------
+// Task Messages (live agent output)
+// ---------------------------------------------------------------------------
+
+type TaskMessageRequest struct {
+	Seq     int            `json:"seq"`
+	Type    string         `json:"type"`
+	Tool    string         `json:"tool,omitempty"`
+	Content string         `json:"content,omitempty"`
+	Input   map[string]any `json:"input,omitempty"`
+	Output  string         `json:"output,omitempty"`
+}
+
+type TaskMessageBatchRequest struct {
+	Messages []TaskMessageRequest `json:"messages"`
+}
+
+// ReportTaskMessages receives a batch of agent execution messages from the daemon.
+func (h *Handler) ReportTaskMessages(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+
+	var req TaskMessageBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(req.Messages) == 0 {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
+
+	task, err := h.Queries.GetAgentTask(r.Context(), parseUUID(taskID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+
+	workspaceID := ""
+	if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
+		workspaceID = uuidToString(issue.WorkspaceID)
+	}
+
+	for _, msg := range req.Messages {
+		var inputJSON []byte
+		if msg.Input != nil {
+			inputJSON, _ = json.Marshal(msg.Input)
+		}
+		h.Queries.CreateTaskMessage(r.Context(), db.CreateTaskMessageParams{
+			TaskID:  parseUUID(taskID),
+			Seq:     int32(msg.Seq),
+			Type:    msg.Type,
+			Tool:    pgtype.Text{String: msg.Tool, Valid: msg.Tool != ""},
+			Content: pgtype.Text{String: msg.Content, Valid: msg.Content != ""},
+			Input:   inputJSON,
+			Output:  pgtype.Text{String: msg.Output, Valid: msg.Output != ""},
+		})
+
+		if workspaceID != "" {
+			h.publish(protocol.EventTaskMessage, workspaceID, "system", "", protocol.TaskMessagePayload{
+				TaskID:  taskID,
+				IssueID: uuidToString(task.IssueID),
+				Seq:     msg.Seq,
+				Type:    msg.Type,
+				Tool:    msg.Tool,
+				Content: msg.Content,
+				Input:   msg.Input,
+				Output:  msg.Output,
+			})
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// ListTaskMessages returns the persisted messages for a task (for catch-up after reconnect).
+func (h *Handler) ListTaskMessages(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+
+	messages, err := h.Queries.ListTaskMessages(r.Context(), parseUUID(taskID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list task messages")
+		return
+	}
+
+	resp := make([]protocol.TaskMessagePayload, len(messages))
+	for i, m := range messages {
+		var input map[string]any
+		if m.Input != nil {
+			json.Unmarshal(m.Input, &input)
+		}
+		resp[i] = protocol.TaskMessagePayload{
+			TaskID:  taskID,
+			Seq:     int(m.Seq),
+			Type:    m.Type,
+			Tool:    m.Tool.String,
+			Content: m.Content.String,
+			Input:   input,
+			Output:  m.Output.String,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// GetActiveTaskForIssue returns the currently running task for an issue, if any.
+func (h *Handler) GetActiveTaskForIssue(w http.ResponseWriter, r *http.Request) {
+	issueID := chi.URLParam(r, "id")
+
+	tasks, err := h.Queries.ListActiveTasksByIssue(r.Context(), parseUUID(issueID))
+	if err != nil || len(tasks) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"task": nil})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"task": taskToResponse(tasks[0])})
 }

@@ -20,6 +20,7 @@ export type WSEventType =
   | "task:progress"
   | "task:completed"
   | "task:failed"
+  | "task:message"
   | "inbox:new"
   | "inbox:read"
   | "inbox:archived"
@@ -146,4 +147,29 @@ export interface SubscriberRemovedPayload {
 export interface ActivityCreatedPayload {
   issue_id: string;
   entry: TimelineEntry;
+}
+
+export interface TaskMessagePayload {
+  task_id: string;
+  issue_id: string;
+  seq: number;
+  type: "text" | "tool_use" | "tool_result" | "error";
+  tool?: string;
+  content?: string;
+  input?: Record<string, unknown>;
+  output?: string;
+}
+
+export interface TaskCompletedPayload {
+  task_id: string;
+  agent_id: string;
+  issue_id: string;
+  status: string;
+}
+
+export interface TaskFailedPayload {
+  task_id: string;
+  agent_id: string;
+  issue_id: string;
+  status: string;
 }

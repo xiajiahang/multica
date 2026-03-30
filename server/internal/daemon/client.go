@@ -83,6 +83,22 @@ func (c *Client) ReportProgress(ctx context.Context, taskID, summary string, ste
 	}, nil)
 }
 
+// TaskMessageData represents a single agent execution message for batch reporting.
+type TaskMessageData struct {
+	Seq     int            `json:"seq"`
+	Type    string         `json:"type"`
+	Tool    string         `json:"tool,omitempty"`
+	Content string         `json:"content,omitempty"`
+	Input   map[string]any `json:"input,omitempty"`
+	Output  string         `json:"output,omitempty"`
+}
+
+func (c *Client) ReportTaskMessages(ctx context.Context, taskID string, messages []TaskMessageData) error {
+	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/tasks/%s/messages", taskID), map[string]any{
+		"messages": messages,
+	}, nil)
+}
+
 func (c *Client) CompleteTask(ctx context.Context, taskID, output, branchName, sessionID, workDir string) error {
 	body := map[string]any{"output": output}
 	if branchName != "" {

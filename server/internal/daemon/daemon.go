@@ -821,22 +821,106 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 		return TaskResult{}, err
 	}
 
-	// Drain message channel — log tool uses and agent text for visibility.
+	// Drain message channel — forward to server for live output + log locally.
 	var toolCount atomic.Int32
 	go func() {
+		var seq atomic.Int32
+		var mu sync.Mutex
+		var pendingText strings.Builder
+		var batch []TaskMessageData
+
+		flush := func() {
+			mu.Lock()
+			// Flush any accumulated text as a single message.
+			if pendingText.Len() > 0 {
+				s := seq.Add(1)
+				batch = append(batch, TaskMessageData{
+					Seq:     int(s),
+					Type:    "text",
+					Content: pendingText.String(),
+				})
+				pendingText.Reset()
+			}
+			toSend := batch
+			batch = nil
+			mu.Unlock()
+
+			if len(toSend) > 0 {
+				sendCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if err := d.client.ReportTaskMessages(sendCtx, task.ID, toSend); err != nil {
+					taskLog.Debug("failed to report task messages", "error", err)
+				}
+				cancel()
+			}
+		}
+
+		// Periodically flush accumulated text messages.
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		done := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+					flush()
+				case <-done:
+					return
+				}
+			}
+		}()
+
 		for msg := range session.Messages {
 			switch msg.Type {
 			case agent.MessageToolUse:
 				n := toolCount.Add(1)
 				taskLog.Info(fmt.Sprintf("tool #%d: %s", n, msg.Tool))
+				s := seq.Add(1)
+				mu.Lock()
+				batch = append(batch, TaskMessageData{
+					Seq:  int(s),
+					Type: "tool_use",
+					Tool: msg.Tool,
+					Input: msg.Input,
+				})
+				mu.Unlock()
+			case agent.MessageToolResult:
+				s := seq.Add(1)
+				// Truncate large tool results for the live feed.
+				output := msg.Output
+				if len(output) > 8192 {
+					output = output[:8192]
+				}
+				mu.Lock()
+				batch = append(batch, TaskMessageData{
+					Seq:    int(s),
+					Type:   "tool_result",
+					Tool:   msg.Tool,
+					Output: output,
+				})
+				mu.Unlock()
 			case agent.MessageText:
 				if msg.Content != "" {
 					taskLog.Debug("agent", "text", truncateLog(msg.Content, 200))
+					mu.Lock()
+					pendingText.WriteString(msg.Content)
+					mu.Unlock()
 				}
 			case agent.MessageError:
 				taskLog.Error("agent error", "content", msg.Content)
+				s := seq.Add(1)
+				mu.Lock()
+				batch = append(batch, TaskMessageData{
+					Seq:     int(s),
+					Type:    "error",
+					Content: msg.Content,
+				})
+				mu.Unlock()
 			}
 		}
+
+		close(done)
+		flush() // Final flush after channel closes.
 	}()
 
 	result := <-session.Result
