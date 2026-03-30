@@ -928,30 +928,26 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                         const isStatusChange = entry.action === "status_changed";
                         const isPriorityChange = entry.action === "priority_changed";
                         const isDueDateChange = entry.action === "due_date_changed";
-                        const isLast = idx === group.entries.length - 1;
 
                         let leadIcon: React.ReactNode;
                         if (isStatusChange && details.to) {
-                          leadIcon = <StatusIcon status={details.to as IssueStatus} className="h-3.5 w-3.5 shrink-0" />;
+                          leadIcon = <StatusIcon status={details.to as IssueStatus} className="h-4 w-4 shrink-0" />;
                         } else if (isPriorityChange && details.to) {
-                          leadIcon = <PriorityIcon priority={details.to as IssuePriority} className="h-3.5 w-3.5 shrink-0" />;
+                          leadIcon = <PriorityIcon priority={details.to as IssuePriority} className="h-4 w-4 shrink-0" />;
                         } else if (isDueDateChange) {
-                          leadIcon = <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
+                          leadIcon = <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />;
                         } else {
-                          leadIcon = <ActorAvatar actorType={entry.actor_type} actorId={entry.actor_id} size={14} />;
+                          leadIcon = <ActorAvatar actorType={entry.actor_type} actorId={entry.actor_id} size={16} />;
                         }
 
                         return (
-                          <div key={entry.id} className="relative flex text-xs text-muted-foreground">
-                            <div className="mr-2.5 flex w-3.5 shrink-0 justify-center">
-                              <div className="flex h-5 items-center">{leadIcon}</div>
+                          <div key={entry.id} className="flex items-center text-xs text-muted-foreground">
+                            <div className="mr-2 flex w-4 shrink-0 justify-center">
+                              {leadIcon}
                             </div>
-                            {!isLast && (
-                              <div className="absolute left-[7px] top-5 h-3 w-px bg-border" />
-                            )}
-                            <div className="flex flex-1 items-baseline gap-1">
-                              <span className="font-medium">{getActorName(entry.actor_type, entry.actor_id)}</span>
-                              <span>{formatActivity(entry, getActorName)}</span>
+                            <div className="flex min-w-0 flex-1 items-center gap-1">
+                              <span className="shrink-0 font-medium">{getActorName(entry.actor_type, entry.actor_id)}</span>
+                              <span className="truncate">{formatActivity(entry, getActorName)}</span>
                               <Tooltip>
                                 <TooltipTrigger
                                   render={
