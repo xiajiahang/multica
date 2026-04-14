@@ -28,30 +28,46 @@ type CreateChannelRequest struct {
 
 func (h *Handler) ListChannels(w http.ResponseWriter, r *http.Request) {
 	workspaceID := ctxWorkspaceID(r.Context())
+	userID, _ := requireUserID(w, r)
 
 	rows, err := h.DB.Query(r.Context(), `
-		SELECT id, workspace_id, name, type, topic, created_by, last_message_at, created_at, updated_at
-		FROM channels WHERE workspace_id = $1
-		ORDER BY last_message_at DESC NULLS LAST
-	`, parseUUID(workspaceID))
+		SELECT c.id, c.workspace_id, c.name, c.type, c.topic, c.created_by, c.last_message_at, c.created_at, c.updated_at,
+			COALESCE(
+				(SELECT COUNT(*) FROM messages m
+				 WHERE m.channel_id = c.id
+				 AND m.created_at > COALESCE(cm.last_read_at, '-infinity'::timestamptz)),
+				0
+			)::int AS unread_count
+		FROM channels c
+		LEFT JOIN channel_members cm ON cm.channel_id = c.id AND cm.member_type = 'user' AND cm.member_id = $2
+		WHERE c.workspace_id = $1
+		ORDER BY c.last_message_at DESC NULLS LAST
+	`, parseUUID(workspaceID), parseUUID(userID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list channels")
 		return
 	}
 	defer rows.Close()
 
-	var channels []db.Channel
+	type channelWithUnread struct {
+		ch          db.Channel
+		unreadCount int
+	}
+	var channels []channelWithUnread
 	for rows.Next() {
 		var ch db.Channel
-		if err := rows.Scan(&ch.ID, &ch.WorkspaceID, &ch.Name, &ch.Type, &ch.Topic, &ch.CreatedBy, &ch.LastMessageAt, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
+		var unread int
+		if err := rows.Scan(&ch.ID, &ch.WorkspaceID, &ch.Name, &ch.Type, &ch.Topic, &ch.CreatedBy, &ch.LastMessageAt, &ch.CreatedAt, &ch.UpdatedAt, &unread); err != nil {
 			continue
 		}
-		channels = append(channels, ch)
+		channels = append(channels, channelWithUnread{ch: ch, unreadCount: unread})
 	}
 
 	resp := make([]ChannelResponse, len(channels))
-	for i, ch := range channels {
-		resp[i] = channelToResponse(ch)
+	for i, c := range channels {
+		r := channelToResponse(c.ch)
+		r.UnreadCount = c.unreadCount
+		resp[i] = r
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -233,7 +249,7 @@ func (h *Handler) ListChannelMembers(w http.ResponseWriter, r *http.Request) {
 type AddChannelMemberRequest struct {
 	MemberType string `json:"member_type"` // user or agent
 	MemberID   string `json:"member_id"`
-	Role       string `json:"role"`         // admin or member
+	Role       string `json:"role"` // admin or member
 }
 
 func (h *Handler) AddChannelMember(w http.ResponseWriter, r *http.Request) {
@@ -723,6 +739,7 @@ type ChannelResponse struct {
 	LastMessageAt *string `json:"last_message_at"`
 	CreatedAt     string  `json:"created_at"`
 	UpdatedAt     string  `json:"updated_at"`
+	UnreadCount   int     `json:"unread_count,omitempty"`
 }
 
 type ChannelMemberResponse struct {

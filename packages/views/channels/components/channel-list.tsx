@@ -88,11 +88,15 @@ export function ChannelList({
                       {getChannelIcon(channel.type)}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <span className="font-medium truncate">{channel.name}</span>
+                      <span className={`truncate ${channel.unread_count ? "font-semibold" : "font-medium"}`}>{channel.name}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground flex-shrink-0">
-                      {formatLastMessage(channel)}
-                    </span>
+                    {channel.unread_count ? (
+                      <span className="ml-auto size-2 rounded-full bg-primary flex-shrink-0" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                        {formatLastMessage(channel)}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -115,11 +119,15 @@ export function ChannelList({
                       {getChannelIcon(channel.type)}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <span className="font-medium truncate">{channel.name}</span>
+                      <span className={`truncate ${channel.unread_count ? "font-semibold" : "font-medium"}`}>{channel.name}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground flex-shrink-0">
-                      {formatLastMessage(channel)}
-                    </span>
+                    {channel.unread_count ? (
+                      <span className="ml-auto size-2 rounded-full bg-primary flex-shrink-0" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                        {formatLastMessage(channel)}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
