@@ -3,6 +3,7 @@
 import { useModalStore } from "@multica/core/modals";
 import { CreateWorkspaceModal } from "./create-workspace";
 import { CreateIssueModal } from "./create-issue";
+import { CreateChannelModal } from "./create-channel";
 
 export function ModalRegistry() {
   const modal = useModalStore((s) => s.modal);
@@ -14,6 +15,8 @@ export function ModalRegistry() {
       return <CreateWorkspaceModal onClose={close} />;
     case "create-issue":
       return <CreateIssueModal onClose={close} data={data} />;
+    case "create-channel":
+      return <CreateChannelModal />;
     default:
       return null;
   }
