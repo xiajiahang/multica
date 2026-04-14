@@ -426,6 +426,48 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Channel task: populate workspace/channel info from the channels table.
+	if task.ChannelID.Valid {
+		if ch, err := h.Queries.GetChannel(r.Context(), task.ChannelID); err == nil {
+			resp.WorkspaceID = uuidToString(ch.WorkspaceID)
+			// Load channel members.
+			members, _ := h.Queries.ListChannelMembers(r.Context(), task.ChannelID)
+			memberInfos := make([]protocol.MemberInfo, 0, len(members))
+			for _, m := range members {
+				memberInfos = append(memberInfos, protocol.MemberInfo{
+					ID:   uuidToString(m.MemberID),
+					Type: m.MemberType,
+				})
+			}
+			// Load most recent messages (up to 50).
+			msgs, _ := h.Queries.ListChannelMessages(r.Context(), db.ListChannelMessagesParams{
+				ChannelID: task.ChannelID,
+				Limit:     50,
+			})
+			messageInfos := make([]protocol.MessageData, 0, len(msgs))
+			for _, m := range msgs {
+				messageInfos = append(messageInfos, protocol.MessageData{
+					ID:         uuidToString(m.ID),
+					AuthorType: m.AuthorType,
+					AuthorID:   uuidToString(m.AuthorID),
+					Content:    m.Content,
+					CreatedAt:  timestampToString(m.CreatedAt),
+				})
+			}
+			topic := ""
+			if ch.Topic.Valid {
+				topic = ch.Topic.String
+			}
+			resp.Channel = &protocol.ChannelContextData{
+				Name:     ch.Name,
+				Topic:    topic,
+				Type:     ch.Type,
+				Members:  memberInfos,
+				Messages: messageInfos,
+			}
+		}
+	}
+
 	slog.Info("task claimed by runtime", "task_id", uuidToString(task.ID), "runtime_id", runtimeID, "agent_id", uuidToString(task.AgentID), "prior_session", resp.PriorSessionID)
 	writeJSON(w, http.StatusOK, map[string]any{"task": resp})
 }
@@ -538,6 +580,26 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("complete task failed", "task_id", taskID, "error", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// If this is a channel task, write the agent's output as a channel message.
+	if task.ChannelID.Valid && req.Output != "" {
+		content, _ := json.Marshal(map[string]any{
+			"type": "text",
+			"text": req.Output,
+		})
+		if prURL := req.PRURL; prURL != "" {
+			content, _ = json.Marshal(map[string]any{
+				"type": "text",
+				"text": req.Output + "\n\nPR: " + prURL,
+			})
+		}
+		_, _ = h.Queries.CreateChannelMessage(r.Context(), db.CreateChannelMessageParams{
+			ChannelID:  task.ChannelID,
+			AuthorType: "agent",
+			AuthorID:   task.AgentID,
+			Content:    content,
+		})
 	}
 
 	slog.Info("task completed", "task_id", taskID, "agent_id", uuidToString(task.AgentID))
