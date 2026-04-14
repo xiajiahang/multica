@@ -79,6 +79,8 @@ type AgentTaskQueue struct {
 	WorkDir          pgtype.Text        `json:"work_dir"`
 	TriggerCommentID pgtype.UUID        `json:"trigger_comment_id"`
 	ChatSessionID    pgtype.UUID        `json:"chat_session_id"`
+	ChannelID        pgtype.UUID        `json:"channel_id"`
+	TriggerMessageID pgtype.UUID        `json:"trigger_message_id"`
 }
 
 type Attachment struct {
@@ -93,6 +95,36 @@ type Attachment struct {
 	ContentType  string             `json:"content_type"`
 	SizeBytes    int64              `json:"size_bytes"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type Channel struct {
+	ID            pgtype.UUID        `json:"id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	Name          string             `json:"name"`
+	Type          string             `json:"type"`
+	Topic         pgtype.Text        `json:"topic"`
+	CreatedBy     pgtype.UUID        `json:"created_by"`
+	LastMessageAt pgtype.Timestamptz `json:"last_message_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ChannelIssue struct {
+	ID        pgtype.UUID        `json:"id"`
+	ChannelID pgtype.UUID        `json:"channel_id"`
+	IssueID   pgtype.UUID        `json:"issue_id"`
+	LinkedBy  pgtype.UUID        `json:"linked_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type ChannelMember struct {
+	ID         pgtype.UUID        `json:"id"`
+	ChannelID  pgtype.UUID        `json:"channel_id"`
+	MemberType string             `json:"member_type"`
+	MemberID   pgtype.UUID        `json:"member_id"`
+	Role       string             `json:"role"`
+	LastReadAt pgtype.Timestamptz `json:"last_read_at"`
+	JoinedAt   pgtype.Timestamptz `json:"joined_at"`
 }
 
 type ChatMessage struct {
@@ -242,6 +274,18 @@ type Member struct {
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
 	UserID      pgtype.UUID        `json:"user_id"`
 	Role        string             `json:"role"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type Message struct {
+	ID          pgtype.UUID        `json:"id"`
+	ChannelID   pgtype.UUID        `json:"channel_id"`
+	AuthorType  string             `json:"author_type"`
+	AuthorID    pgtype.UUID        `json:"author_id"`
+	Content     []byte             `json:"content"`
+	Attachments []byte             `json:"attachments"`
+	EditedAt    pgtype.Timestamptz `json:"edited_at"`
+	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
