@@ -40,6 +40,7 @@ import { createEditorExtensions } from "./extensions";
 import { uploadAndInsertFile } from "./extensions/file-upload";
 import { preprocessMarkdown } from "./utils/preprocess";
 import { EditorBubbleMenu } from "./bubble-menu";
+import { useLinkHover, LinkHoverCard } from "./link-hover-card";
 import "./content-editor.css";
 
 // ---------------------------------------------------------------------------
@@ -214,6 +215,11 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       },
     }));
 
+    // Link hover card — disabled when BubbleMenu is active (has selection)
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    const hoverDisabled = !editor?.state.selection.empty;
+    const hover = useLinkHover(wrapperRef, hoverDisabled);
+
     const handleContainerMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
       if (!editable || !editor) return;
 
@@ -229,15 +235,13 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
 
     return (
       <div
+        ref={wrapperRef}
         className="relative flex min-h-full flex-col"
         onMouseDown={handleContainerMouseDown}
       >
         <EditorContent className="flex-1 min-h-full" editor={editor} />
-        {editable && (
-          <>
-            <EditorBubbleMenu editor={editor} />
-          </>
-        )}
+        {editable && <EditorBubbleMenu editor={editor} />}
+        <LinkHoverCard {...hover} />
       </div>
     );
   },

@@ -16,7 +16,7 @@
  * - Rendering mentions with the same IssueMentionCard component and .mention class
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import ReactMarkdown, {
   defaultUrlTransform,
   type Components,
@@ -33,7 +33,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { useNavigation } from "../navigation";
 import { IssueMentionCard } from "../issues/components/issue-mention-card";
 import { ImageLightbox } from "./extensions/image-view";
-
+import { useLinkHover, LinkHoverCard } from "./link-hover-card";
 import { preprocessMarkdown } from "./utils/preprocess";
 import "./content-editor.css";
 
@@ -281,9 +281,11 @@ interface ReadonlyContentProps {
 
 export function ReadonlyContent({ content, className }: ReadonlyContentProps) {
   const processed = useMemo(() => preprocessMarkdown(content), [content]);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const hover = useLinkHover(wrapperRef);
 
   return (
-    <div className={cn("rich-text-editor readonly text-sm", className)}>
+    <div ref={wrapperRef} className={cn("rich-text-editor readonly text-sm", className)}>
       <ReactMarkdown
         remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
@@ -292,6 +294,7 @@ export function ReadonlyContent({ content, className }: ReadonlyContentProps) {
       >
         {processed}
       </ReactMarkdown>
+      <LinkHoverCard {...hover} />
     </div>
   );
 }
