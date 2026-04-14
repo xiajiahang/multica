@@ -664,6 +664,83 @@ export class ApiClient {
     });
   }
 
+  // Channels
+  async listChannels(): Promise<import("../types").Channel[]> {
+    return this.fetch("/api/channels");
+  }
+
+  async getChannel(id: string): Promise<import("../types").Channel> {
+    return this.fetch(`/api/channels/${id}`);
+  }
+
+  async createChannel(data: import("../types").CreateChannelRequest): Promise<import("../types").Channel> {
+    return this.fetch("/api/channels", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateChannel(id: string, data: import("../types").UpdateChannelRequest): Promise<import("../types").Channel> {
+    return this.fetch(`/api/channels/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteChannel(id: string): Promise<void> {
+    await this.fetch(`/api/channels/${id}`, { method: "DELETE" });
+  }
+
+  async listChannelMembers(channelId: string): Promise<import("../types").ChannelMember[]> {
+    return this.fetch(`/api/channels/${channelId}/members`);
+  }
+
+  async addChannelMember(
+    channelId: string,
+    data: { member_type: "user" | "agent"; member_id: string; role?: "admin" | "member" }
+  ): Promise<import("../types").ChannelMember> {
+    return this.fetch(`/api/channels/${channelId}/members`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeChannelMember(channelId: string, memberType: string, memberId: string): Promise<void> {
+    await this.fetch(`/api/channels/${channelId}/members/${memberType}/${memberId}`, { method: "DELETE" });
+  }
+
+  async listChannelMessages(channelId: string): Promise<import("../types").ChannelMessage[]> {
+    return this.fetch(`/api/channels/${channelId}/messages`);
+  }
+
+  async sendChannelMessage(
+    channelId: string,
+    data: import("../types").SendChannelMessageRequest
+  ): Promise<import("../types").SendChannelMessageResponse> {
+    return this.fetch(`/api/channels/${channelId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async createOrGetDM(data: import("../types").CreateOrGetDMRequest): Promise<import("../types").Channel> {
+    return this.fetch("/api/channels/dm", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async linkChannelIssue(channelId: string, data: import("../types").LinkChannelIssueRequest): Promise<void> {
+    await this.fetch(`/api/channels/${channelId}/issues`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listChannelIssues(channelId: string): Promise<import("../types").ChannelIssue[]> {
+    return this.fetch(`/api/channels/${channelId}/issues`);
+  }
+
   async cancelTaskById(taskId: string): Promise<void> {
     await this.fetch(`/api/tasks/${taskId}/cancel`, { method: "POST" });
   }

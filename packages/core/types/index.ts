@@ -31,6 +31,18 @@ export type * from "./events";
 export type * from "./api";
 export type { Attachment } from "./attachment";
 export type { ChatSession, ChatMessage, SendChatMessageResponse } from "./chat";
+export type {
+  Channel,
+  ChannelMember,
+  ChannelMessage,
+  ChannelIssue,
+  CreateChannelRequest,
+  UpdateChannelRequest,
+  SendChannelMessageRequest,
+  SendChannelMessageResponse,
+  CreateOrGetDMRequest,
+  LinkChannelIssueRequest,
+} from "./channel";
 export type { StorageAdapter } from "./storage";
 export type { Project, ProjectStatus, ProjectPriority, CreateProjectRequest, UpdateProjectRequest, ListProjectsResponse } from "./project";
 export type { PinnedItem, PinnedItemType, CreatePinRequest, ReorderPinsRequest } from "./pin";
