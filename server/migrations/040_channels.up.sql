@@ -2,11 +2,11 @@
 
 CREATE TABLE channels (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    workspace_id UUID NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
     name VARCHAR(80) NOT NULL,
     type VARCHAR(20) NOT NULL CHECK (type IN ('public', 'private', 'dm')),
     topic TEXT DEFAULT '',
-    created_by UUID REFERENCES members(id),
+    created_by UUID REFERENCES member(id),
     last_message_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -46,8 +46,8 @@ CREATE INDEX idx_messages_channel_created ON messages(channel_id, created_at DES
 CREATE TABLE channel_issues (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
-    issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
-    linked_by UUID REFERENCES members(id),
+    issue_id UUID NOT NULL REFERENCES issue(id) ON DELETE CASCADE,
+    linked_by UUID REFERENCES member(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(channel_id, issue_id)
 );

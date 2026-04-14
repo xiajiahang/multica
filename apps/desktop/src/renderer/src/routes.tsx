@@ -16,6 +16,7 @@ import { SkillsPage } from "@multica/views/skills";
 import { AgentsPage } from "@multica/views/agents";
 import { InboxPage } from "@multica/views/inbox";
 import { SettingsPage } from "@multica/views/settings";
+import { ChannelsPage } from "@multica/views/channels";
 
 /**
  * Sets document.title from the deepest matched route's handle.title.
@@ -68,6 +69,11 @@ export const appRoutes: RouteObject[] = [
         path: "projects/:id",
         element: <ProjectDetailPage />,
         handle: { title: "Project" },
+      },
+      {
+        path: "channels",
+        element: <ChannelsPage />,
+        handle: { title: "Channels" },
       },
       {
         path: "my-issues",
