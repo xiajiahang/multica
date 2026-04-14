@@ -1,60 +1,60 @@
-# Channels & DM — Design Spec
+# Channels & DM — 设计规格
 
-**Date:** 2026-04-14
-**Status:** Draft
-**Scope:** Add channel-based real-time collaboration to Multica, alongside existing Issue Board
+**日期:** 2026-04-14
+**状态:** 草案
+**范围:** 为 Multica 新增频道（Channel）实时协作层，与现有 Issue Board 并存
 
-## Motivation
+## 背景
 
-Multica positions AI agents as teammates, but today the only interaction model is issue-driven: assign an issue, wait for the agent to complete it. Slock.ai demonstrates an alternative — channel-based collaboration where agents participate as equals in real-time conversations.
+Multica 将 AI agent 定位为团队成员，但目前唯一的交互模式是 Issue 驱动的：分配一个 issue，等待 agent 完成。Slock.ai 展示了另一种可能——基于频道的协作，agent 以平等的身份参与实时对话。
 
-This spec adds a Channels + DM layer to Multica. The goal: let developers chat with agents in real-time, @mention them for immediate help, and keep issue tracking as the structured backbone.
+本规格为 Multica 新增 Channels + DM 层。目标：让开发者与 agent 实时对话，通过 @mention 获得即时帮助，同时保留 Issue Board 作为结构化任务追踪的骨架。
 
-## Design Principles
+## 设计原则
 
-1. **Incremental on existing architecture** — reuse the daemon task queue, execution pipeline, and WS event bus. No rewrite.
-2. **Issue Board stays** — channels and issues coexist. Channels are for real-time collaboration; issues are for tracked work.
-3. **First version: @-trigger only** — agents respond when @mentioned. Auto-respond mode is a future iteration.
-4. **No threads in v1** — messages are flat. Thread replies can be added later.
-5. **DM as a special channel** — one unified data model, `type=dm`.
+1. **在现有架构上增量迭代** — 复用 daemon 任务队列、执行管线和 WS 事件总线，不重写。
+2. **Issue Board 不变** — 频道和 Issue 并存。频道负责实时协作，Issue 负责追踪工作。
+3. **第一版：仅 @触发** — agent 只在 @mention 时响应。自动响应模式作为后续迭代。
+4. **第一版不做 Thread** — 消息平铺展示，线程回复后续再加。
+5. **DM 是特殊频道** — 统一数据模型，`type=dm`。
 
-## Core Flow
+## 核心流程
 
-### Sending a message and triggering an agent
+### 发送消息并触发 Agent
 
 ```
-User sends message in channel
+用户在频道中发送消息
   → INSERT INTO messages
-  → Broadcast channel:message_new
-  → Parse message for @agent mentions
-     ├─ No @agent → done
-     └─ @agent found → EnqueueTask(agentId, channelId, messageId)
+  → 广播 channel:message_new
+  → 解析消息中的 @agent 提及
+     ├─ 没有 @agent → 结束
+     └─ 检测到 @agent → EnqueueTask(agentId, channelId, messageId)
          → INSERT INTO agent_task_queue (status='queued')
-         → Broadcast task:dispatch
+         → 广播 task:dispatch
 
-Daemon pollLoop (unchanged)
-  → ClaimTask → returns channel context
-  → handleTask (unchanged)
+Daemon pollLoop（不变）
+  → ClaimTask → 返回频道上下文
+  → handleTask（不变）
   → runTask:
-     ├─ Detect channel_id → BuildChannelPrompt()
-     │   (channel history + current message + agent skills)
-     ├─ agent.Backend.Execute() (unchanged)
-     ├─ Stream output via ReportTaskMessages (unchanged)
+     ├─ 检测 channel_id → BuildChannelPrompt()
+     │   （频道历史 + 当前消息 + agent skills）
+     ├─ agent.Backend.Execute()（不变）
+     ├─ 通过 ReportTaskMessages 流式输出（不变）
      └─ CompleteTask:
         → INSERT INTO messages (author_type='agent')
-        → Broadcast channel:message_new
+        → 广播 channel:message_new
 ```
 
-### Agent context restoration
+### Agent 上下文恢复
 
-When an agent is triggered in a channel for the second time:
-- Reuse the existing `PriorSessionID` + `PriorWorkDir` mechanism from the issue flow
-- Look up the last completed task for the same (agent, channel) pair
-- Agent resumes with full context from the previous conversation
+当 agent 在频道中被第二次触发时：
+- 复用现有的 `PriorSessionID` + `PriorWorkDir` 机制
+- 查找同一 (agent, channel) 对的上一次已完成任务
+- Agent 带着上次对话的完整上下文恢复
 
-## Data Model
+## 数据模型
 
-### New tables
+### 新增表
 
 ```sql
 CREATE TABLE channels (
@@ -113,7 +113,7 @@ CREATE INDEX idx_channel_issues_channel ON channel_issues(channel_id);
 CREATE INDEX idx_channel_issues_issue ON channel_issues(issue_id);
 ```
 
-### Existing table changes
+### 现有表变更
 
 ```sql
 ALTER TABLE agent_task_queue
@@ -123,155 +123,155 @@ ALTER TABLE agent_task_queue
 
 ## Server API
 
-### Channel CRUD
+### 频道 CRUD
 
-| Method | Path | Handler |
-|--------|------|---------|
+| 方法 | 路径 | 处理器 |
+|------|------|--------|
 | GET | `/api/workspaces/{wsId}/channels` | ListChannels |
 | POST | `/api/workspaces/{wsId}/channels` | CreateChannel |
 | GET | `/api/workspaces/{wsId}/channels/{channelId}` | GetChannel |
 | PATCH | `/api/workspaces/{wsId}/channels/{channelId}` | UpdateChannel |
 | DELETE | `/api/workspaces/{wsId}/channels/{channelId}` | DeleteChannel |
 
-### Members
+### 成员管理
 
-| Method | Path | Handler |
-|--------|------|---------|
+| 方法 | 路径 | 处理器 |
+|------|------|--------|
 | GET | `/api/workspaces/{wsId}/channels/{channelId}/members` | ListMembers |
 | POST | `/api/workspaces/{wsId}/channels/{channelId}/members` | AddMember |
 | DELETE | `/api/workspaces/{wsId}/channels/{channelId}/members/{memberType}/{memberId}` | RemoveMember |
 
-### Messages
+### 消息
 
-| Method | Path | Handler |
-|--------|------|---------|
+| 方法 | 路径 | 处理器 |
+|------|------|--------|
 | GET | `/api/workspaces/{wsId}/channels/{channelId}/messages?cursor=&limit=50` | ListMessages |
 | POST | `/api/workspaces/{wsId}/channels/{channelId}/messages` | SendMessage |
 
-### DM shortcut
+### DM 快捷方式
 
-| Method | Path | Handler |
-|--------|------|---------|
-| POST | `/api/workspaces/{wsId}/dms` | CreateOrGetDM (upsert by member pair) |
+| 方法 | 路径 | 处理器 |
+|------|------|--------|
+| POST | `/api/workspaces/{wsId}/dms` | CreateOrGetDM（按成员对 upsert） |
 
-### Issue linking
+### Issue 关联
 
-| Method | Path | Handler |
-|--------|------|---------|
+| 方法 | 路径 | 处理器 |
+|------|------|--------|
 | POST | `/api/workspaces/{wsId}/channels/{channelId}/issues` | LinkIssue |
 | GET | `/api/workspaces/{wsId}/channels/{channelId}/issues` | ListLinkedIssues |
 
-### SendMessage handler logic
+### SendMessage 处理逻辑
 
 ```
-1. Validate user is a member of the channel
+1. 验证用户是频道成员
 2. INSERT INTO messages
 3. UPDATE channels SET last_message_at = NOW()
-4. Broadcast channel:message_new
-5. Parse content for @agent mentions
-6. For each @mentioned agent:
-   a. Verify agent is a channel member and is active
-   b. Call EnqueueTask(agentId, channelId, messageId)
-   c. Broadcast task:dispatch
+4. 广播 channel:message_new
+5. 解析内容中的 @agent 提及
+6. 对每个被 @的 agent：
+   a. 验证 agent 是频道成员且处于活跃状态
+   b. 调用 EnqueueTask(agentId, channelId, messageId)
+   c. 广播 task:dispatch
 ```
 
-## WebSocket Events
+## WebSocket 事件
 
-### New event types
+### 新增事件类型
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `channel:created` | `{ channel }` | Channel created in workspace |
-| `channel:updated` | `{ channel }` | Channel name/topic updated |
-| `channel:member_joined` | `{ channelId, memberType, memberId }` | Member added |
-| `channel:member_left` | `{ channelId, memberType, memberId }` | Member removed |
-| `channel:message_new` | `{ channelId, message }` | New message |
-| `channel:message_edited` | `{ channelId, message }` | Message edited |
-| `channel:message_deleted` | `{ channelId, messageId }` | Message deleted |
-| `channel:read` | `{ channelId, memberId, lastReadAt }` | Read marker updated |
+| 事件 | 载荷 | 说明 |
+|------|------|------|
+| `channel:created` | `{ channel }` | 工作区中创建了频道 |
+| `channel:updated` | `{ channel }` | 频道名称/主题更新 |
+| `channel:member_joined` | `{ channelId, memberType, memberId }` | 成员加入 |
+| `channel:member_left` | `{ channelId, memberType, memberId }` | 成员离开 |
+| `channel:message_new` | `{ channelId, message }` | 新消息 |
+| `channel:message_edited` | `{ channelId, message }` | 消息编辑 |
+| `channel:message_deleted` | `{ channelId, messageId }` | 消息删除 |
+| `channel:read` | `{ channelId, memberId, lastReadAt }` | 已读标记更新 |
 
-### Existing events reused
+### 复用的现有事件
 
-- `task:dispatch` — agent task queued from channel message
-- `task:message` — agent streaming output (displayed in channel UI)
-- `task:completed` — agent finished channel task
-- `task:failed` — agent failed channel task
+- `task:dispatch` — 频道消息触发的 agent 任务入队
+- `task:message` — agent 流式输出（在频道 UI 中展示）
+- `task:completed` — agent 完成频道任务
+- `task:failed` — agent 频道任务失败
 
-### Event routing
+### 事件路由
 
-All channel events are scoped to the workspace room (same as existing). The frontend filters by `channelId` to determine which channel view should update.
+所有频道事件按 workspace room 划分（与现有机制一致）。前端根据 `channelId` 过滤，决定更新哪个频道视图。
 
-## Daemon Changes
+## Daemon 改动
 
-### What changes
+### 改动点
 
-**1. ClaimTask response — new task context type**
+**1. ClaimTask 响应 — 新增任务上下文类型**
 
-When `task.channel_id` is set, the claim response includes:
-- Channel name, type, topic
-- Recent messages (last 50)
-- The trigger message
-- Prior session info (last completed task for same agent + channel)
+当 `task.channel_id` 有值时，claim 响应包含：
+- 频道名称、类型、主题
+- 最近消息（最近 50 条）
+- 触发消息内容
+- 上下文恢复信息（同一 agent + channel 的上次完成任务）
 
-**2. Prompt Builder — channel variant**
+**2. Prompt Builder — 频道变体**
 
 ```
 BuildChannelPrompt(task, messages):
-  "You are {agentName}, a member of channel #{channelName}.
-   Channel topic: {topic}
-   Members: {member list}
+  "你是 {agentName}，频道 #{channelName} 的成员。
+   频道主题: {topic}
+   成员列表: {member list}
 
-   Recent conversation:
-   [timestamp] {author}: {content}
+   最近对话:
+   [时间戳] {作者}: {内容}
    ...
 
-   {triggerMessage.author} @mentioned you:
-   {triggerMessage.content}
+   {触发消息作者} @了你:
+   {触发消息内容}
 
-   Respond in the channel. Your response will be posted as a message."
+   请在频道中回复。你的回复将作为消息发送。"
 ```
 
-**3. CompleteTask — channel result path**
+**3. CompleteTask — 频道结果回写**
 
-When `task.channel_id` is set:
-- Agent output → INSERT INTO messages (author_type='agent', channel_id)
-- Broadcast channel:message_new
+当 `task.channel_id` 有值时：
+- Agent 输出 → INSERT INTO messages (author_type='agent', channel_id)
+- 广播 channel:message_new
 
-### What stays the same
+### 不变的部分
 
-| Component | Reason |
-|-----------|--------|
-| pollLoop + round-robin | Task queue is unified |
-| handleTask lifecycle | Start → run → complete/fail unchanged |
-| execenv (workdir isolation) | Same isolation model |
-| agent.Backend.Execute | Same CLI invocation |
-| 500ms message batching | Same streaming pipeline |
-| Heartbeat | Unrelated to task type |
-| Token usage reporting | Same path |
+| 组件 | 原因 |
+|------|------|
+| pollLoop + round-robin | 任务队列统一 |
+| handleTask 生命周期 | Start → run → complete/fail 不变 |
+| execenv（workdir 隔离） | 同样的隔离模型 |
+| agent.Backend.Execute | 同样的 CLI 调用方式 |
+| 500ms 消息批量上报 | 同样的流式管线 |
+| Heartbeat | 与任务类型无关 |
+| Token 用量上报 | 同样的路径 |
 
-## Frontend
+## 前端
 
-### New files
+### 新增文件
 
 ```
 packages/views/channels/
-├── channel-list.tsx          # Sidebar channel list
-├── channel-view.tsx          # Main channel view (messages + input)
-├── channel-header.tsx        # Channel name, topic, members
-├── message-list.tsx          # Message stream (infinite scroll up)
-├── message-item.tsx          # Single message (user vs agent styling)
-├── message-input.tsx         # Rich input with @mention autocomplete
+├── channel-list.tsx          # 侧边栏频道列表
+├── channel-view.tsx          # 频道主视图（消息流 + 输入框）
+├── channel-header.tsx        # 频道名称、主题、成员
+├── message-list.tsx          # 消息流（向上无限滚动加载）
+├── message-item.tsx          # 单条消息（用户/agent 区分样式）
+├── message-input.tsx         # 富文本输入框（@提及自动补全）
 └── components/
-    ├── agent-status.tsx      # Agent online/hibernating indicator
-    └── issue-card-inline.tsx # Inline issue card in messages
+    ├── agent-status.tsx      # Agent 在线/休眠状态指示器
+    └── issue-card-inline.tsx # 消息中内嵌的 Issue 卡片
 ```
 
-### Sidebar integration
+### 侧边栏集成
 
 ```
 Inbox
 Issues
-Channels                    ← New section
+Channels                    ← 新增分组
 ├── Channels
 │   ├── # frontend-dev
 │   └── # general
@@ -283,13 +283,13 @@ Runtimes
 Settings
 ```
 
-### Message rendering
+### 消息渲染
 
-- **User messages**: avatar + name + content (consistent with existing comments)
-- **Agent messages**: purple badge + robot icon (reuse existing agent styling) + streaming typing animation
-- **Streaming output**: reuse chat page streaming render logic
+- **用户消息**：头像 + 名称 + 内容，与现有评论样式一致
+- **Agent 消息**：紫色标识 + 机器人图标（复用现有 agent 样式）+ 流式输出时显示打字动画
+- **流式输出**：复用 chat 页面的流式渲染逻辑
 
-### TanStack Query integration
+### TanStack Query 集成
 
 ```
 useChannelList(wsId)                    → query key: ['channels', wsId]
@@ -298,44 +298,44 @@ useChannelMessages(wsId, channelId)     → query key: ['channels', wsId, channe
 useChannelMembers(wsId, channelId)      → query key: ['channels', wsId, channelId, 'members']
 ```
 
-WS events invalidate the relevant query keys (same pattern as issues).
+WS 事件触发相关 query key 的 invalidation（与 Issue 同样的模式）。
 
-### Navigation
+### 导航
 
-Channel views use the NavigationAdapter — no `next/navigation` or `react-router-dom` imports. Route definitions:
+频道视图使用 NavigationAdapter — 不导入 `next/navigation` 或 `react-router-dom`。路由定义：
 - Web: `apps/web/app/(dashboard)/channels/[channelId]/page.tsx`
-- Desktop: registered in desktop router
+- Desktop: 在 desktop router 中注册
 
-## Scope Boundaries
+## 范围边界
 
-### In scope (v1)
+### v1 范围内
 
-- Channel CRUD (public, private, dm)
-- Message send/receive (rich text)
-- @mention agent → task enqueue → agent response in channel
-- Agent streaming output in channel
-- Channel-Issue linking (basic)
-- Unread indicators (last_read_at)
-- Sidebar channel list with unread counts
+- 频道 CRUD（公开、私密、DM）
+- 消息收发（富文本）
+- @agent → 任务入队 → agent 在频道中回复
+- Agent 流式输出在频道中展示
+- 频道-Issue 关联（基础）
+- 未读标记（last_read_at）
+- 侧边栏频道列表 + 未读计数
 
-### Out of scope (future iterations)
+### v1 范围外（后续迭代）
 
-- Channel auto-respond mode
-- Thread replies
-- Message search
-- File attachments in messages
-- Message reactions
-- Typing indicators
-- Channel notifications / inbox integration
-- Agent memory persistence across channels
-- Smart agent routing
+- 频道自动响应模式
+- 线程回复
+- 消息搜索
+- 消息中的文件附件
+- 消息表情回应
+- 正在输入指示
+- 频道通知 / Inbox 集成
+- Agent 跨频道记忆持久化
+- 智能 Agent 路由
 
-## Migration Strategy
+## 迁移策略
 
-1. **Migration 1**: Create new tables (channels, channel_members, messages, channel_issues)
-2. **Migration 2**: Alter agent_task_queue to add channel_id and trigger_message_id
-3. **Server**: New handlers + service extensions (no breaking changes to existing endpoints)
-4. **Daemon**: Prompt builder extension (backward compatible)
-5. **Frontend**: New views/channels package (additive)
+1. **迁移 1**：创建新表（channels, channel_members, messages, channel_issues）
+2. **迁移 2**：修改 agent_task_queue，新增 channel_id 和 trigger_message_id 字段
+3. **Server**：新增处理器 + service 扩展（不改动现有端点）
+4. **Daemon**：Prompt builder 扩展（向后兼容）
+5. **前端**：新增 views/channels 包（纯新增）
 
-Each step is independently deployable. Existing issue/chat functionality is untouched.
+每个步骤可独立部署。现有的 Issue/Chat 功能不受影响。
