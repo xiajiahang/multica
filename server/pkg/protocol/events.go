@@ -74,4 +74,15 @@ const (
 	// Daemon events
 	EventDaemonHeartbeat = "daemon:heartbeat"
 	EventDaemonRegister  = "daemon:register"
+
+	// Channel events
+	EventChannelCreated         = "channel:created"
+	EventChannelUpdated         = "channel:updated"
+	EventChannelDeleted        = "channel:deleted"
+	EventChannelMemberJoined   = "channel:member_joined"
+	EventChannelMemberLeft     = "channel:member_left"
+	EventChannelMessageNew     = "channel:message_new"
+	EventChannelMessageEdited  = "channel:message_edited"
+	EventChannelMessageDeleted = "channel:message_deleted"
+	EventChannelRead           = "channel:read"
 )
