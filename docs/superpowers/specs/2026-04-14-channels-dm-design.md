@@ -201,19 +201,137 @@ ALTER TABLE agent_task_queue
 
 所有频道事件按 workspace room 划分（与现有机制一致）。前端根据 `channelId` 过滤，决定更新哪个频道视图。
 
-## Daemon 改动
+## Server 与 Daemon 交互：精确变更
 
-### 改动点
+### 现有交互架构
 
-**1. ClaimTask 响应 — 新增任务上下文类型**
+Server 与 Daemon 之间是 **HTTP 轮询**（非 WebSocket）。Daemon 通过 `server/internal/daemon/client.go` 中的 HTTP Client 调用 Server 端点。
 
-当 `task.channel_id` 有值时，claim 响应包含：
-- 频道名称、类型、主题
-- 最近消息（最近 50 条）
-- 触发消息内容
-- 上下文恢复信息（同一 agent + channel 的上次完成任务）
+```
+Daemon                              Server
+  │                                   │
+  │── POST /register ───────────────→ │  注册 runtime
+  │←── {runtimes, repos} ─────────── │
+  │                                   │
+  │── POST /heartbeat (每30s) ──────→ │  心跳
+  │←── {pending_ping?, update?} ───── │
+  │                                   │
+  │── POST /tasks/claim (轮询) ─────→ │  领任务
+  │←── {task: AgentTaskResponse|null} │
+  │                                   │
+  │── POST /tasks/{id}/start ───────→ │  开始执行
+  │── POST /tasks/{id}/messages ────→ │  流式上报（500ms批量）
+  │── POST /tasks/{id}/complete ────→ │  完成
+  │── POST /tasks/{id}/fail ────────→ │  失败
+  │── POST /tasks/{id}/usage ───────→ │  用量上报
+```
 
-**2. Prompt Builder — 频道变体**
+### 任务类型判定（现有机制）
+
+现有系统没有 TaskType 枚举。任务类型通过 `agent_task_queue` 表中哪个可选字段有值来区分：
+
+- **Issue 任务**：`issue_id` 有值
+- **Chat 任务**：`chat_session_id` 有值
+
+迭代后新增第三种：
+- **Channel 任务**：`channel_id` 有值
+
+### 不变的 Daemon 端点
+
+以下端点请求和响应格式完全不变：
+
+| 端点 | 说明 |
+|------|------|
+| `POST /register` | 注册 runtime |
+| `POST /heartbeat` | 心跳 |
+| `POST /tasks/{id}/start` | 开始任务 |
+| `POST /tasks/{id}/progress` | 进度上报 |
+| `POST /tasks/{id}/messages` | 流式消息上报 |
+| `POST /tasks/{id}/usage` | Token 用量上报 |
+| `POST /tasks/{id}/fail` | 任务失败 |
+| `GET /tasks/{id}/status` | 查询状态 |
+
+### 变更 1：ClaimTask 响应新增字段
+
+现有 `AgentTaskResponse`（定义在 `server/internal/handler/daemon.go`）：
+
+```go
+type AgentTaskResponse struct {
+    ID               string         `json:"id"`
+    AgentID          string         `json:"agent_id"`
+    RuntimeID        string         `json:"runtime_id"`
+    IssueID          string         `json:"issue_id"`              // issue 任务有值
+    WorkspaceID      string         `json:"workspace_id"`
+    Agent            *TaskAgentData `json:"agent,omitempty"`
+    Repos            []RepoData     `json:"repos,omitempty"`
+    PriorSessionID   string         `json:"prior_session_id,omitempty"`
+    PriorWorkDir     string         `json:"prior_work_dir,omitempty"`
+    TriggerCommentID *string        `json:"trigger_comment_id,omitempty"`
+    ChatSessionID    string         `json:"chat_session_id,omitempty"`  // chat 任务有值
+    ChatMessage      string         `json:"chat_message,omitempty"`     // chat 任务有值
+
+    // === 新增字段 ===
+    ChannelID         string              `json:"channel_id,omitempty"`        // channel 任务有值
+    Channel           *ChannelContextData  `json:"channel,omitempty"`           // 频道上下文
+    TriggerMessageID  string              `json:"trigger_message_id,omitempty"` // 触发消息 ID
+}
+```
+
+新增类型：
+
+```go
+type ChannelContextData struct {
+    Name     string        `json:"name"`
+    Topic    string        `json:"topic"`
+    Type     string        `json:"type"`      // public/private/dm
+    Members  []MemberInfo  `json:"members"`
+    Messages []MessageData `json:"messages"`  // 最近 50 条
+}
+```
+
+### 变更 2：ClaimTask 处理逻辑新增分支
+
+现有逻辑（`handler/daemon.go:ClaimTaskByRuntime`）按任务类型填充上下文：
+
+```go
+// 现有
+if task.IssueID.Valid {
+    // 加载 issue + workspace repos + prior session（按 agent+issue 查找）
+}
+if task.ChatSessionID.Valid {
+    // 加载 chat session + last user message + prior session（按 chat session）
+}
+
+// 新增
+if task.ChannelID.Valid {
+    // 加载频道信息（name, topic, type）
+    // 加载频道成员列表
+    // 加载最近 50 条消息
+    // 查找 prior session（按 agent+channel 对，复用 GetLastTaskSession 逻辑）
+}
+```
+
+### 变更 3：CompleteTask 回写新增分支
+
+现有逻辑（`service/task.go:CompleteTask`）：
+
+```go
+// 现有
+if task.IssueID.Valid {
+    // 在 Issue 上发评论
+}
+if task.ChatSessionID.Valid {
+    // 保存为 chat message + 广播 chat:done
+}
+
+// 新增
+if task.ChannelID.Valid {
+    // INSERT INTO messages (author_type='agent', channel_id, content=output)
+    // 广播 channel:message_new
+}
+```
+
+### 变更 4：Prompt Builder 频道变体
 
 ```
 BuildChannelPrompt(task, messages):
@@ -231,23 +349,171 @@ BuildChannelPrompt(task, messages):
    请在频道中回复。你的回复将作为消息发送。"
 ```
 
-**3. CompleteTask — 频道结果回写**
+### 不变的核心组件
 
-当 `task.channel_id` 有值时：
-- Agent 输出 → INSERT INTO messages (author_type='agent', channel_id)
-- 广播 channel:message_new
+| 组件 | 文件 | 原因 |
+|------|------|------|
+| pollLoop + round-robin | `daemon/daemon.go:684` | 任务队列统一，轮询逻辑不关心任务类型 |
+| handleTask 生命周期 | `daemon/daemon.go:771` | Start → run → complete/fail 流程不变 |
+| execenv（workdir 隔离） | `daemon/execenv/execenv.go` | 同样的隔离模型 |
+| agent.Backend.Execute | `daemon/agent/` | 同样的 CLI 调用方式 |
+| 500ms 消息批量上报 | `daemon/daemon.go:991-1118` | 同样的流式管线，写入同一张 task_message 表 |
+| Heartbeat | `daemon/daemon.go:439` | 与任务类型无关 |
+| Token 用量上报 | `daemon/daemon.go:853` | 同样的路径 |
+
+## 事件总线：精确变更
+
+### 现有事件总线架构
+
+```
+DB 写入 → Service 层 → bus.Publish(events.Event{Type, WorkspaceID, Payload})
+                              ↓
+                      类型监听器 + 全局监听器
+                              ↓
+                    listeners.go 桥接层
+                              ↓
+              hub.BroadcastToWorkspace(workspaceID, data)
+                              ↓
+                   WS 推送给该 workspace 的所有前端客户端
+```
+
+关键组件：
+- `server/internal/events/bus.go` — 同步进程内事件总线
+- `server/internal/realtime/hub.go` — WebSocket Hub，按 workspace room 分发
+- `server/cmd/server/listeners.go` — 桥接：bus 事件 → hub 广播
 
 ### 不变的部分
 
-| 组件 | 原因 |
+**Bus 不改。Hub 不改。** `listeners.go` 中的 `bus.SubscribeAll()` 全局监听器自动处理所有新增的 `channel:*` 事件——它们都有 `WorkspaceID`，走 `hub.BroadcastToWorkspace` 路由。
+
+### 新增事件常量
+
+在 `server/pkg/protocol/events.go` 新增：
+
+```go
+EventChannelCreated        = "channel:created"
+EventChannelUpdated        = "channel:updated"
+EventChannelMemberJoined   = "channel:member_joined"
+EventChannelMemberLeft     = "channel:member_left"
+EventChannelMessageNew     = "channel:message_new"
+EventChannelMessageEdited  = "channel:message_edited"
+EventChannelMessageDeleted = "channel:message_deleted"
+EventChannelRead           = "channel:read"
+```
+
+### 新增消息载荷
+
+在 `server/pkg/protocol/messages.go` 新增：
+
+```go
+type ChannelMessagePayload struct {
+    ChannelID string      `json:"channel_id"`
+    Message   MessageData `json:"message"`
+}
+
+type MessageData struct {
+    ID         string          `json:"id"`
+    AuthorType string          `json:"author_type"`   // "user" | "agent"
+    AuthorID   string          `json:"author_id"`
+    AuthorName string          `json:"author_name"`
+    Content    json.RawMessage `json:"content"`        // Tiptap JSON
+    CreatedAt  string          `json:"created_at"`
+}
+```
+
+### 复用的现有事件
+
+频道任务复用现有的 task 事件，无需新增：
+
+| 事件 | 用途 |
 |------|------|
-| pollLoop + round-robin | 任务队列统一 |
-| handleTask 生命周期 | Start → run → complete/fail 不变 |
-| execenv（workdir 隔离） | 同样的隔离模型 |
-| agent.Backend.Execute | 同样的 CLI 调用方式 |
-| 500ms 消息批量上报 | 同样的流式管线 |
-| Heartbeat | 与任务类型无关 |
-| Token 用量上报 | 同样的路径 |
+| `task:dispatch` | 频道消息触发 agent 任务入队 |
+| `task:message` | Agent 流式输出（前端在频道 UI 中渲染） |
+| `task:completed` | Agent 完成频道任务 |
+| `task:failed` | Agent 频道任务失败 |
+
+## Channel Message 的完整生命周期
+
+### 消息从发送到 Agent 回复的完整链路
+
+```
+阶段 1：用户发送消息
+───────────────────────────────────────────────────────────────
+前端 → POST /api/workspaces/{wsId}/channels/{chId}/messages
+       body: { content: TiptapJSON }
+
+Server SendMessage handler:
+  1. 验证用户是频道成员
+  2. INSERT INTO messages (author_type='user', content=JSONB)
+  3. UPDATE channels SET last_message_at = NOW()
+  4. bus.Publish("channel:message_new", {channelId, message})
+     → listeners.go → hub.BroadcastToWorkspace(wsId)
+     → 所有前端 WS 客户端收到 → 频道 UI 显示用户消息
+  5. 解析 content 中的 @agent 提及
+  6. 对每个 @agent:
+     a. 验证 agent 是频道成员且活跃
+     b. EnqueueTask(agentID, channelID, messageID)
+        → INSERT INTO agent_task_queue (channel_id, status='queued')
+     c. bus.Publish("task:dispatch", {task_id, ...})
+        → 前端频道 UI 显示 agent 开始工作
+
+阶段 2：Daemon 领取任务
+───────────────────────────────────────────────────────────────
+Daemon pollLoop（不变）:
+  → POST /tasks/claim
+  → Server 返回 AgentTaskResponse:
+    {
+      id, agent_id, runtime_id,
+      channel_id: "xxx",
+      channel: {
+        name: "frontend-dev",
+        topic: "...",
+        members: [{name, type}, ...],
+        messages: [最近50条消息]
+      },
+      trigger_message_id: "yyy",
+      agent: { name, instructions, skills },
+      prior_session_id: "zzz",    // 同 agent+channel 的上次会话
+      workspace_id: "...",
+      repos: [...]
+    }
+
+阶段 3：Daemon 执行 Agent
+───────────────────────────────────────────────────────────────
+handleTask（不变）:
+  1. StartTask() → status='running'
+  2. BuildChannelPrompt(频道历史 + 触发消息 + skills)
+  3. execenv.Prepare() → 创建隔离工作目录
+  4. agent.Backend.Execute() → 调用 CLI
+  5. 流式输出 → 500ms 批量 → ReportTaskMessages()
+     → Server 存 task_message
+     → bus.Publish("task:message", {task_id, content})
+     → hub.BroadcastToWorkspace(wsId)
+     → 前端频道 UI 实时显示 agent 输出（打字动画）
+
+阶段 4：Agent 完成，结果回写
+───────────────────────────────────────────────────────────────
+Daemon → POST /tasks/{id}/complete { output, session_id, work_dir }
+
+Server CompleteTask:
+  1. UPDATE agent_task_queue SET status='completed'
+  2. channel_id 有值 → INSERT INTO messages
+     (author_type='agent', channel_id, content=output)
+  3. bus.Publish("channel:message_new", {channelId, agentMessage})
+     → 前端频道 UI 显示 agent 正式回复消息
+  4. bus.Publish("task:completed", {task_id})
+```
+
+### 流式输出与最终消息的关系
+
+Agent 执行过程中会产生两层输出，前端需要正确处理：
+
+| 阶段 | 事件 | 前端渲染 |
+|------|------|---------|
+| 执行中 | `task:message`（现有，500ms 批量） | 频道消息流中显示 agent "正在输入"，实时更新内容 |
+| 执行完成 | `channel:message_new`（新增） | Agent 正式回复消息，固定在消息流中 |
+
+前端处理：收到 `task:completed` 时，将流式输出的临时显示替换为 `channel:message_new` 的正式消息，避免重复。
 
 ## 前端
 
