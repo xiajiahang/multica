@@ -19,6 +19,8 @@ export function ChannelList({
 }: ChannelListProps) {
   const wsId = useWorkspaceId();
   const { data: channels = [] } = useQuery(listChannelsOptions(wsId));
+  const publicChannels = channels.filter(c => c.type !== "dm");
+  const dmChannels = channels.filter(c => c.type === "dm");
 
   const getChannelIcon = (type: Channel["type"]) => {
     switch (type) {
@@ -67,32 +69,62 @@ export function ChannelList({
             No channels yet
           </div>
         ) : (
-          <div className="py-2">
-            {channels.map((channel) => (
-              <button
-                key={channel.id}
-                onClick={() => onSelectChannel(channel.id)}
-                className={`w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-muted/50 transition-colors ${
-                  selectedChannelId === channel.id ? "bg-muted" : ""
-                }`}
-              >
-                <span className="text-muted-foreground">
-                  {getChannelIcon(channel.type)}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium truncate">{channel.name}</span>
-                    {channel.type === "dm" && (
-                      <span className="text-xs text-muted-foreground">DM</span>
-                    )}
-                  </div>
+          <>
+            {/* Channels section */}
+            {publicChannels.length > 0 && (
+              <div className="py-2">
+                <div className="px-4 py-1 text-xs text-muted-foreground font-medium">
+                  Channels
                 </div>
-                <span className="text-xs text-muted-foreground flex-shrink-0">
-                  {formatLastMessage(channel)}
-                </span>
-              </button>
-            ))}
-          </div>
+                {publicChannels.map((channel) => (
+                  <button
+                    key={channel.id}
+                    onClick={() => onSelectChannel(channel.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-muted/50 transition-colors ${
+                      selectedChannelId === channel.id ? "bg-muted" : ""
+                    }`}
+                  >
+                    <span className="text-muted-foreground">
+                      {getChannelIcon(channel.type)}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium truncate">{channel.name}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                      {formatLastMessage(channel)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* DM section */}
+            {dmChannels.length > 0 && (
+              <div className="border-t py-2">
+                <div className="px-4 py-1 text-xs text-muted-foreground font-medium">
+                  Direct Messages
+                </div>
+                {dmChannels.map((channel) => (
+                  <button
+                    key={channel.id}
+                    onClick={() => onSelectChannel(channel.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-muted/50 transition-colors ${
+                      selectedChannelId === channel.id ? "bg-muted" : ""
+                    }`}
+                  >
+                    <span className="text-muted-foreground">
+                      {getChannelIcon(channel.type)}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium truncate">{channel.name}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                      {formatLastMessage(channel)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
