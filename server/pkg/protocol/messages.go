@@ -80,3 +80,34 @@ type HeartbeatPayload struct {
 	AgentID      string `json:"agent_id"`
 	CurrentTasks int    `json:"current_tasks"`
 }
+
+// ChannelMessagePayload is broadcast when a new channel message is created.
+type ChannelMessagePayload struct {
+	ChannelID string      `json:"channel_id"`
+	Message   MessageData `json:"message"`
+}
+
+// MessageData represents a message within a channel.
+type MessageData struct {
+	ID         string          `json:"id"`
+	AuthorType string          `json:"author_type"` // "user" | "agent"
+	AuthorID   string          `json:"author_id"`
+	AuthorName string          `json:"author_name"`
+	Content    json.RawMessage `json:"content"` // Tiptap JSON
+	CreatedAt  string         `json:"created_at"`
+}
+
+// ChannelContextData is included in ClaimTask response for channel tasks.
+type ChannelContextData struct {
+	Name     string       `json:"name"`
+	Topic    string       `json:"topic"`
+	Type     string       `json:"type"`                 // public/private/dm
+	Members  []MemberInfo `json:"members"`
+	Messages []MessageData `json:"messages"`             // most recent 50
+}
+
+// MemberInfo describes a member in a channel context.
+type MemberInfo struct {
+	ID   string `json:"id"`
+	Type string `json:"type"` // "user" | "agent"
+}
