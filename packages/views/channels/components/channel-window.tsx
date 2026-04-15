@@ -13,6 +13,8 @@ import {
   channelMessagesOptions,
   channelKeys,
 } from "@multica/core/channels/queries";
+import { agentListOptions } from "@multica/core/workspace/queries";
+import { memberListOptions } from "@multica/core/workspace/queries";
 import { useSendChannelMessage } from "@multica/core/channels/mutations";
 import { useWS, useWSEvent } from "@multica/core/realtime";
 import type { ChannelMessage, TaskMessagePayload } from "@multica/core/types";
@@ -35,12 +37,59 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
   const { data: messages = [] } = useQuery(
     channelMessagesOptions(channelId ?? ""),
   );
+  const { data: agents = [] } = useQuery(agentListOptions(wsId ?? ""));
+  const { data: members = [] } = useQuery(memberListOptions(wsId ?? ""));
 
   const sendMessage = useSendChannelMessage();
 
+  // Build lookup maps for author names
+  const agentMap = new Map(agents.map((a) => [a.id, a]));
+  const memberMap = new Map(members.map((m) => [m.user_id, m]));
+
+  const getAuthorDisplayName = useCallback(
+    (authorType: string, authorId: string, isOwnMessage: boolean) => {
+      if (isOwnMessage) {
+        return user?.name ?? "You";
+      }
+      if (authorType === "agent") {
+        const agent = agentMap.get(authorId);
+        return agent?.name ?? "Agent";
+      }
+      const member = memberMap.get(authorId);
+      return member?.name ?? authorId.slice(0, 8);
+    },
+    [agentMap, memberMap, user],
+  );
+
+  const getAuthorAvatar = useCallback(
+    (authorType: string, authorId: string) => {
+      if (authorType === "agent") {
+        return agentMap.get(authorId)?.avatar_url ?? null;
+      }
+      const member = memberMap.get(authorId);
+      return member?.avatar_url ?? null;
+    },
+    [agentMap, memberMap],
+  );
+
   const { subscribe } = useWS();
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const [pendingTaskAgentName, setPendingTaskAgentName] = useState<string | null>(null);
   const pendingTaskRef = useRef<string | null>(null);
+
+  // Scroll to bottom ref
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  // Scroll to bottom when messages first load
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(scrollToBottom, 100);
+    }
+  }, [messages.length, scrollToBottom]);
 
   // Subscribe to task streaming events for agent responses
   useEffect(() => {
@@ -54,7 +103,10 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
         qc.invalidateQueries({ queryKey: channelKeys.messages(channelId) });
       }
       setStreamingContent(null);
+      setPendingTaskAgentName(null);
       pendingTaskRef.current = null;
+      // Scroll to bottom after agent response is complete
+      setTimeout(scrollToBottom, 100);
     };
 
     const unsubMessage = subscribe("task:message", (payload) => {
@@ -82,7 +134,7 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
       unsubCompleted();
       unsubFailed();
     };
-  }, [channelId, qc, subscribe]);
+  }, [channelId, qc, subscribe, scrollToBottom]);
 
   // WS event handler for new messages
   useWSEvent(
@@ -96,12 +148,15 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
             (old) => {
               if (!old) return old;
               if (old.some((m) => m.id === p.message.id)) return old;
-              return [p.message, ...old];
+              const newMessages = [...old, p.message];
+              // Scroll to bottom when new message arrives
+              setTimeout(scrollToBottom, 100);
+              return newMessages;
             },
           );
         }
       },
-      [channelId, qc],
+      [channelId, qc, scrollToBottom],
     ),
   );
 
@@ -109,6 +164,27 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
     if (!channelId || !editorRef.current) return;
     const json = editorRef.current.getJSON();
     if (!json) return;
+
+    // Extract agent_id from mention in message content
+    let mentionedAgentId: string | null = null;
+    const findMention = (node: unknown): string | null => {
+      if (!node || typeof node !== "object") return null;
+      const n = node as Record<string, unknown>;
+      if (n.type === "mention" && n.attrs) {
+        const attrs = n.attrs as Record<string, unknown>;
+        if (attrs.type === "agent" && typeof attrs.id === "string") {
+          return attrs.id;
+        }
+      }
+      if (Array.isArray(n.content)) {
+        for (const child of n.content) {
+          const found = findMention(child);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    mentionedAgentId = findMention(json);
 
     const result = await sendMessage.mutateAsync({
       channelId,
@@ -121,8 +197,15 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
     // Track task for streaming agent responses
     if (result.task_id) {
       pendingTaskRef.current = result.task_id;
+      // Set agent name for streaming display
+      if (mentionedAgentId) {
+        const agent = agentMap.get(mentionedAgentId);
+        setPendingTaskAgentName(agent?.name ?? "Agent");
+      } else {
+        setPendingTaskAgentName("Agent");
+      }
     }
-  }, [channelId, sendMessage]);
+  }, [channelId, sendMessage, agentMap]);
 
   if (!channelId) {
     return (
@@ -174,9 +257,19 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
               No messages yet. Start the conversation!
             </p>
           ) : (
-            messages.map((message) => {
+            // Display in chronological order (oldest first, newest last)
+            [...messages].reverse().map((message) => {
               const isOwnMessage = message.author_id === user?.id;
               const isAgent = message.author_type === "agent";
+              const authorName = getAuthorDisplayName(
+                message.author_type,
+                message.author_id,
+                isOwnMessage,
+              );
+              const authorAvatar = getAuthorAvatar(
+                message.author_type,
+                message.author_id,
+              );
 
               return (
                 <div
@@ -184,13 +277,13 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
                   className={`flex gap-3 ${isOwnMessage ? "flex-row-reverse" : ""}`}
                 >
                   <Avatar className="size-8">
-                    <AvatarImage />
+                    <AvatarImage src={authorAvatar ?? undefined} />
                     <AvatarFallback className={isAgent ? "bg-purple-100" : ""}>
                       {isAgent ? (
-                        <span className="text-xs">AG</span>
+                        <Bot className="size-4 text-purple-700" />
                       ) : (
                         <span className="text-xs">
-                          {message.author_id.slice(0, 2).toUpperCase()}
+                          {authorName.slice(0, 2).toUpperCase()}
                         </span>
                       )}
                     </AvatarFallback>
@@ -202,9 +295,7 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
                   >
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">
-                        {message.author_type === "agent"
-                          ? "Agent"
-                          : message.author_id.slice(0, 8)}
+                        {authorName}
                       </span>
                       <span>
                         {new Date(message.created_at).toLocaleTimeString()}
@@ -243,7 +334,9 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
               </Avatar>
               <div className="flex flex-col gap-1 max-w-[70%]">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">Agent</span>
+                  <span className="font-medium text-foreground">
+                    {pendingTaskAgentName ?? "Agent"}
+                  </span>
                   <Loader2 className="size-3 animate-spin" />
                 </div>
                 <div className="rounded-lg px-3 py-2 text-sm bg-purple-50 text-purple-900 whitespace-pre-wrap">
@@ -252,6 +345,9 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
               </div>
             </div>
           )}
+
+          {/* Scroll anchor */}
+          <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
 
