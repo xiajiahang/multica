@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Hash, Loader2, X } from "lucide-react";
+import { Bot, Hash, Loader2, Send, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@multica/ui/components/ui/avatar";
 import { Button } from "@multica/ui/components/ui/button";
 import { ScrollArea } from "@multica/ui/components/ui/scroll-area";
@@ -257,11 +257,22 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
 
       {/* Input */}
       <div className="p-4 border-t">
-        <ContentEditor
-          ref={editorRef}
-          placeholder={`Message #${channel.name}`}
-          onSubmit={handleSend}
-        />
+        <div className="relative">
+          <ContentEditor
+            ref={editorRef}
+            placeholder={`Message #${channel.name}`}
+            onSubmit={handleSend}
+            enterToSend
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute bottom-2 right-2"
+            onClick={handleSend}
+          >
+            <Send className="size-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );

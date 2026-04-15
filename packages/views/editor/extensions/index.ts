@@ -85,6 +85,7 @@ export interface EditorExtensionsOptions {
   onUploadFileRef?: RefObject<
     ((file: File) => Promise<UploadResult | null>) | undefined
   >;
+  enterToSend?: boolean;
 }
 
 export function createEditorExtensions(
@@ -122,7 +123,7 @@ export function createEditorExtensions(
       Typography,
       Placeholder.configure({ placeholder: placeholderText }),
       createMarkdownPasteExtension(),
-      createSubmitExtension(() => options.onSubmitRef?.current?.()),
+      createSubmitExtension(() => options.onSubmitRef?.current?.(), options.enterToSend),
       createFileUploadExtension(options.onUploadFileRef!),
     );
   }

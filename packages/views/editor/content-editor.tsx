@@ -54,6 +54,8 @@ interface ContentEditorProps {
   onSubmit?: () => void;
   onBlur?: () => void;
   onUploadFile?: (file: File) => Promise<UploadResult | null>;
+  /** Enter key submits (Shift+Enter for newline). Default: false (Cmd+Enter submits) */
+  enterToSend?: boolean;
 }
 
 interface ContentEditorRef {
@@ -80,6 +82,7 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       onSubmit,
       onBlur,
       onUploadFile,
+      enterToSend = false,
     },
     ref,
   ) {
@@ -109,6 +112,7 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
         queryClient,
         onSubmitRef,
         onUploadFileRef,
+        enterToSend,
       }),
       onUpdate: ({ editor: ed }) => {
         if (!onUpdateRef.current) return;

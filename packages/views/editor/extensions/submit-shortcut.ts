@@ -1,6 +1,6 @@
 import { Extension } from "@tiptap/core";
 
-export function createSubmitExtension(onSubmit: () => void) {
+export function createSubmitExtension(onSubmit: () => void, enterToSend = false) {
   return Extension.create({
     name: "submitShortcut",
     addKeyboardShortcuts() {
@@ -9,6 +9,14 @@ export function createSubmitExtension(onSubmit: () => void) {
           onSubmit();
           return true;
         },
+        ...(enterToSend
+          ? {
+              Enter: () => {
+                onSubmit();
+                return true;
+              },
+            }
+          : {}),
       };
     },
   });
