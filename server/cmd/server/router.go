@@ -325,6 +325,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/messages", h.SendChannelMessage)
 					r.Post("/issues", h.LinkChannelIssue)
 					r.Get("/issues", h.ListChannelIssues)
+					r.Post("/read", h.MarkChannelRead)
 				})
 			})
 			r.Post("/api/channels/dm", h.CreateOrGetDM)

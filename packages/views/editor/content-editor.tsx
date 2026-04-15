@@ -58,6 +58,7 @@ interface ContentEditorProps {
 
 interface ContentEditorRef {
   getMarkdown: () => string;
+  getJSON: () => Record<string, unknown> | null;
   clearContent: () => void;
   focus: () => void;
   uploadFile: (file: File) => void;
@@ -192,6 +193,7 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
 
     useImperativeHandle(ref, () => ({
       getMarkdown: () => editor?.getMarkdown() ?? "",
+      getJSON: () => (editor?.getJSON() ?? null) as Record<string, unknown> | null,
       clearContent: () => {
         editor?.commands.clearContent();
       },

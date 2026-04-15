@@ -21,6 +21,17 @@ import {
 import { onInboxNew, onInboxInvalidate, onInboxIssueStatusChanged } from "../inbox/ws-updaters";
 import { inboxKeys } from "../inbox/queries";
 import { workspaceKeys } from "../workspace/queries";
+import {
+  onChannelCreated,
+  onChannelUpdated,
+  onChannelDeleted,
+  onChannelMessageNew,
+  onChannelMessageEdited,
+  onChannelMessageDeleted,
+  onChannelMemberJoined,
+  onChannelMemberLeft,
+} from "../channels/ws-updaters";
+import { channelKeys } from "../channels/queries";
 import type {
   MemberAddedPayload,
   WorkspaceDeletedPayload,
@@ -39,6 +50,14 @@ import type {
   IssueReactionRemovedPayload,
   SubscriberAddedPayload,
   SubscriberRemovedPayload,
+  ChannelCreatedPayload,
+  ChannelUpdatedPayload,
+  ChannelDeletedPayload,
+  ChannelMemberJoinedPayload,
+  ChannelMemberLeftPayload,
+  ChannelMessageNewPayload,
+  ChannelMessageEditedPayload,
+  ChannelMessageDeletedPayload,
 } from "../types";
 
 const logger = createLogger("realtime-sync");
@@ -109,6 +128,10 @@ export function useRealtimeSync(
         const wsId = workspaceStore.getState().workspace?.id;
         if (wsId) qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
       },
+      channel: () => {
+        const wsId = workspaceStore.getState().workspace?.id;
+        if (wsId) qc.invalidateQueries({ queryKey: channelKeys.all(wsId) });
+      },
     };
 
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -133,6 +156,9 @@ export function useRealtimeSync(
       "issue_reaction:added", "issue_reaction:removed",
       "subscriber:added", "subscriber:removed",
       "daemon:heartbeat",
+      "channel:created", "channel:updated", "channel:deleted",
+      "channel:message_new", "channel:message_edited", "channel:message_deleted",
+      "channel:member_joined", "channel:member_left", "channel:read",
     ]);
 
     const unsubAny = ws.onAny((msg) => {
@@ -242,6 +268,62 @@ export function useRealtimeSync(
       if (issue_id) qc.invalidateQueries({ queryKey: issueKeys.subscribers(issue_id) });
     });
 
+    // --- Channel event handlers ---
+
+    const unsubChannelCreated = ws.on("channel:created", (p) => {
+      const { channel } = p as ChannelCreatedPayload;
+      if (!channel) return;
+      const wsId = workspaceStore.getState().workspace?.id;
+      if (wsId) onChannelCreated(qc, wsId, channel);
+    });
+
+    const unsubChannelUpdated = ws.on("channel:updated", (p) => {
+      const { channel } = p as ChannelUpdatedPayload;
+      if (!channel?.id) return;
+      const wsId = workspaceStore.getState().workspace?.id;
+      if (wsId) onChannelUpdated(qc, wsId, channel);
+    });
+
+    const unsubChannelDeleted = ws.on("channel:deleted", (p) => {
+      const { channel_id } = p as ChannelDeletedPayload;
+      if (!channel_id) return;
+      const wsId = workspaceStore.getState().workspace?.id;
+      if (wsId) onChannelDeleted(qc, wsId, channel_id);
+    });
+
+    const unsubChannelMessageNew = ws.on("channel:message_new", (p) => {
+      const { channel_id, message } = p as ChannelMessageNewPayload;
+      if (!channel_id || !message) return;
+      onChannelMessageNew(qc, channel_id, message);
+      // Also invalidate channel list to update last_message_at / unread
+      const wsId = workspaceStore.getState().workspace?.id;
+      if (wsId) qc.invalidateQueries({ queryKey: channelKeys.list(wsId) });
+    });
+
+    const unsubChannelMessageEdited = ws.on("channel:message_edited", (p) => {
+      const { channel_id, message } = p as ChannelMessageEditedPayload;
+      if (!channel_id || !message) return;
+      onChannelMessageEdited(qc, channel_id, message);
+    });
+
+    const unsubChannelMessageDeleted = ws.on("channel:message_deleted", (p) => {
+      const { channel_id, message_id } = p as ChannelMessageDeletedPayload;
+      if (!channel_id || !message_id) return;
+      onChannelMessageDeleted(qc, channel_id, message_id);
+    });
+
+    const unsubChannelMemberJoined = ws.on("channel:member_joined", (p) => {
+      const { channel_id, member } = p as ChannelMemberJoinedPayload;
+      if (!channel_id || !member) return;
+      onChannelMemberJoined(qc, channel_id, member);
+    });
+
+    const unsubChannelMemberLeft = ws.on("channel:member_left", (p) => {
+      const { channel_id, member_id } = p as ChannelMemberLeftPayload;
+      if (!channel_id || !member_id) return;
+      onChannelMemberLeft(qc, channel_id, member_id);
+    });
+
     // --- Side-effect handlers (toast, navigation) ---
 
     const unsubWsDeleted = ws.on("workspace:deleted", (p) => {
@@ -295,6 +377,14 @@ export function useRealtimeSync(
       unsubIssueReactionRemoved();
       unsubSubscriberAdded();
       unsubSubscriberRemoved();
+      unsubChannelCreated();
+      unsubChannelUpdated();
+      unsubChannelDeleted();
+      unsubChannelMessageNew();
+      unsubChannelMessageEdited();
+      unsubChannelMessageDeleted();
+      unsubChannelMemberJoined();
+      unsubChannelMemberLeft();
       unsubWsDeleted();
       unsubMemberRemoved();
       unsubMemberAdded();
@@ -319,6 +409,7 @@ export function useRealtimeSync(
           qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) });
           qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: channelKeys.all(wsId) });
         }
         qc.invalidateQueries({ queryKey: workspaceKeys.list() });
       } catch (e) {

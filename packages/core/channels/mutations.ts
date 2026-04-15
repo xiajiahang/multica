@@ -129,3 +129,15 @@ export function useLinkChannelIssue() {
     },
   });
 }
+
+export function useMarkChannelRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (channelId: string) => api.markChannelRead(channelId),
+    onSuccess: () => {
+      // Invalidate channel list to refresh unread counts
+      // The specific workspace ID will be picked up from the query key
+      qc.invalidateQueries({ queryKey: ["channels"] });
+    },
+  });
+}

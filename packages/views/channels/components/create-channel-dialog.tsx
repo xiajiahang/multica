@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Hash, Lock, MessageSquare } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Bot, Hash, Lock, MessageSquare, Search } from "lucide-react";
 import { cn } from "@multica/ui/lib/utils";
 import { toast } from "sonner";
 import {
@@ -11,7 +12,10 @@ import {
 } from "@multica/ui/components/ui/dialog";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
-import { useCreateChannel } from "@multica/core/channels/mutations";
+import { Avatar, AvatarFallback } from "@multica/ui/components/ui/avatar";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { memberListOptions, agentListOptions } from "@multica/core/workspace/queries";
+import { useCreateChannel, useCreateOrGetDM } from "@multica/core/channels/mutations";
 import type { CreateChannelRequest } from "@multica/core/types";
 
 interface CreateChannelDialogProps {
@@ -31,8 +35,36 @@ export function CreateChannelDialog({ open, onClose, onSuccess }: CreateChannelD
   const [topic, setTopic] = useState("");
   const [type, setType] = useState<CreateChannelRequest["type"]>("public");
   const [submitting, setSubmitting] = useState(false);
+  const [dmSearch, setDmSearch] = useState("");
 
+  const wsId = useWorkspaceId();
   const createChannel = useCreateChannel();
+  const createOrGetDM = useCreateOrGetDM();
+
+  const { data: workspaceMembers = [] } = useQuery(memberListOptions(wsId));
+  const { data: agents = [] } = useQuery(agentListOptions(wsId));
+
+  const handleDMSelect = async (memberType: "user" | "agent", memberId: string, memberName: string) => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const channel = await createOrGetDM.mutateAsync({
+        other_member_type: memberType,
+        other_member_id: memberId,
+      });
+      setName("");
+      setTopic("");
+      setType("public");
+      setDmSearch("");
+      onSuccess?.(channel.id);
+      onClose();
+      toast.success(`DM with ${memberName}`);
+    } catch {
+      toast.error("Failed to create DM");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!name.trim() || submitting) return;
@@ -88,22 +120,74 @@ export function CreateChannelDialog({ open, onClose, onSuccess }: CreateChannelD
             ))}
           </div>
 
-          {/* Name input */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Channel Name</label>
-            <div className="relative">
-              {type !== "dm" && (
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">#</span>
-              )}
-              <Input
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={type === "dm" ? "Username or email" : "channel-name"}
-                className={type !== "dm" ? "pl-7" : ""}
-              />
+          {/* Name/DM input */}
+          {type === "dm" ? (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Start a conversation with</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <Input
+                  autoFocus
+                  value={dmSearch}
+                  onChange={(e) => setDmSearch(e.target.value)}
+                  placeholder="Search members or agents..."
+                  className="pl-9"
+                />
+              </div>
+              <div className="max-h-48 overflow-y-auto space-y-0.5">
+                {agents
+                  .filter((a) => !a.archived_at)
+                  .filter((a) => !dmSearch || a.name.toLowerCase().includes(dmSearch.toLowerCase()))
+                  .map((agent) => (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={() => handleDMSelect("agent", agent.id, agent.name)}
+                      className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md hover:bg-accent text-left"
+                    >
+                      <Avatar className="size-6">
+                        <AvatarFallback className="bg-purple-100 text-purple-700 text-xs">
+                          <Bot className="size-3" />
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>{agent.name}</span>
+                      <span className="text-xs text-muted-foreground ml-auto">Agent</span>
+                    </button>
+                  ))}
+                {workspaceMembers
+                  .filter((m) => !dmSearch || (m.name ?? "").toLowerCase().includes(dmSearch.toLowerCase()))
+                  .map((m) => (
+                    <button
+                      key={m.user_id}
+                      type="button"
+                      onClick={() => handleDMSelect("user", m.user_id, m.name ?? "Unknown")}
+                      className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md hover:bg-accent text-left"
+                    >
+                      <Avatar className="size-6">
+                        <AvatarFallback className="text-xs">
+                          {(m.name ?? "U").slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>{m.name ?? "Unknown"}</span>
+                    </button>
+                  ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Channel Name</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">#</span>
+                <Input
+                  autoFocus
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="channel-name"
+                  className="pl-7"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Topic input */}
           {type !== "dm" && (
@@ -123,12 +207,14 @@ export function CreateChannelDialog({ open, onClose, onSuccess }: CreateChannelD
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!name.trim() || submitting}
-          >
-            {submitting ? "Creating..." : "Create Channel"}
-          </Button>
+          {type !== "dm" && (
+            <Button
+              onClick={handleSubmit}
+              disabled={!name.trim() || submitting}
+            >
+              {submitting ? "Creating..." : "Create Channel"}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

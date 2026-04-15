@@ -79,6 +79,15 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := ctxWorkspaceID(r.Context())
 
+	// Look up member ID for the current user in this workspace.
+	var memberID pgtype.UUID
+	if err := h.DB.QueryRow(r.Context(), `
+		SELECT id FROM member WHERE user_id = $1 AND workspace_id = $2
+	`, parseUUID(userID), parseUUID(workspaceID)).Scan(&memberID); err != nil {
+		writeError(w, http.StatusForbidden, "not a workspace member")
+		return
+	}
+
 	var req CreateChannelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -101,7 +110,7 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO channels (workspace_id, name, type, topic, created_by)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, workspace_id, name, type, topic, created_by, last_message_at, created_at, updated_at
-	`, parseUUID(workspaceID), req.Name, req.Type, req.Topic, parseUUID(userID)).Scan(
+	`, parseUUID(workspaceID), req.Name, req.Type, req.Topic, memberID).Scan(
 		&channel.ID, &channel.WorkspaceID, &channel.Name, &channel.Type, &channel.Topic,
 		&channel.CreatedBy, &channel.LastMessageAt, &channel.CreatedAt, &channel.UpdatedAt)
 	if err != nil {
@@ -113,7 +122,7 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	h.DB.Exec(r.Context(), `
 		INSERT INTO channel_members (channel_id, member_type, member_id, role)
 		VALUES ($1, 'user', $2, 'admin')
-	`, channel.ID, parseUUID(userID))
+	`, channel.ID, memberID)
 
 	h.publish(protocol.EventChannelCreated, workspaceID, "member", userID, map[string]any{
 		"channel": channelToResponse(channel),
@@ -200,6 +209,24 @@ func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 	h.publish(protocol.EventChannelDeleted, workspaceID, "member", userID, map[string]any{
 		"channel_id": channelID,
 	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) MarkChannelRead(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	channelID := chi.URLParam(r, "channelId")
+
+	_, err := h.DB.Exec(r.Context(), `
+		UPDATE channel_members SET last_read_at = NOW()
+		WHERE channel_id = $1 AND member_type = 'user' AND member_id = $2
+	`, parseUUID(channelID), parseUUID(userID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to mark read")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -436,7 +463,7 @@ func (h *Handler) SendChannelMessage(w http.ResponseWriter, r *http.Request) {
 	// Get author name for broadcast.
 	authorName := ""
 	var memberName string
-	if err := h.DB.QueryRow(r.Context(), `SELECT name FROM members WHERE id = $1`, parseUUID(userID)).Scan(&memberName); err == nil {
+	if err := h.DB.QueryRow(r.Context(), `SELECT name FROM "user" WHERE id = $1`, parseUUID(userID)).Scan(&memberName); err == nil {
 		authorName = memberName
 	}
 
@@ -577,6 +604,15 @@ func (h *Handler) CreateOrGetDM(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := ctxWorkspaceID(r.Context())
 
+	// Look up member ID for the current user.
+	var callerMemberID pgtype.UUID
+	if err := h.DB.QueryRow(r.Context(), `
+		SELECT id FROM member WHERE user_id = $1 AND workspace_id = $2
+	`, parseUUID(userID), parseUUID(workspaceID)).Scan(&callerMemberID); err != nil {
+		writeError(w, http.StatusForbidden, "not a workspace member")
+		return
+	}
+
 	var req CreateOrGetDMRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -644,7 +680,7 @@ func (h *Handler) CreateOrGetDM(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO channels (workspace_id, name, type, created_by)
 		VALUES ($1, 'dm', 'dm', $2)
 		RETURNING id, workspace_id, name, type, topic, created_by, last_message_at, created_at, updated_at
-	`, parseUUID(workspaceID), parseUUID(userID)).Scan(
+	`, parseUUID(workspaceID), callerMemberID).Scan(
 		&channel.ID, &channel.WorkspaceID, &channel.Name, &channel.Type, &channel.Topic,
 		&channel.CreatedBy, &channel.LastMessageAt, &channel.CreatedAt, &channel.UpdatedAt)
 	if err != nil {

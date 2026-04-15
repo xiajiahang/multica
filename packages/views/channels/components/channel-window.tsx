@@ -1,23 +1,24 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Send, Hash, Users, X } from "lucide-react";
+import { Bot, Hash, Loader2, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@multica/ui/components/ui/avatar";
 import { Button } from "@multica/ui/components/ui/button";
-import { Input } from "@multica/ui/components/ui/input";
 import { ScrollArea } from "@multica/ui/components/ui/scroll-area";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useAuthStore } from "@multica/core/auth";
 import {
   channelOptions,
   channelMessagesOptions,
-  channelMembersOptions,
   channelKeys,
 } from "@multica/core/channels/queries";
 import { useSendChannelMessage } from "@multica/core/channels/mutations";
-import { useWSEvent } from "@multica/core/realtime";
-import type { ChannelMessage } from "@multica/core/types";
+import { useWS, useWSEvent } from "@multica/core/realtime";
+import type { ChannelMessage, TaskMessagePayload } from "@multica/core/types";
+import { tiptapJsonToPlainText } from "../utils/message-content";
+import { ContentEditor, type ContentEditorRef } from "../../editor";
+import { MemberPopover } from "./member-popover";
 
 interface ChannelWindowProps {
   channelId: string | null;
@@ -28,17 +29,60 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
   const wsId = useWorkspaceId();
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const [messageInput, setMessageInput] = useState("");
+  const editorRef = useRef<ContentEditorRef>(null);
 
   const { data: channel } = useQuery(channelOptions(wsId, channelId ?? ""));
-  const { data: members = [] } = useQuery(
-    channelMembersOptions(channelId ?? ""),
-  );
   const { data: messages = [] } = useQuery(
     channelMessagesOptions(channelId ?? ""),
   );
 
   const sendMessage = useSendChannelMessage();
+
+  const { subscribe } = useWS();
+  const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const pendingTaskRef = useRef<string | null>(null);
+
+  // Subscribe to task streaming events for agent responses
+  useEffect(() => {
+    if (!channelId) return;
+
+    const matchesPending = (taskId: string) =>
+      !!pendingTaskRef.current && taskId === pendingTaskRef.current;
+
+    const finalizePending = (invalidateCache: boolean) => {
+      if (invalidateCache && channelId) {
+        qc.invalidateQueries({ queryKey: channelKeys.messages(channelId) });
+      }
+      setStreamingContent(null);
+      pendingTaskRef.current = null;
+    };
+
+    const unsubMessage = subscribe("task:message", (payload) => {
+      const p = payload as TaskMessagePayload;
+      if (!matchesPending(p.task_id)) return;
+      if (p.type === "text" && p.content) {
+        setStreamingContent((prev) => (prev ?? "") + p.content);
+      }
+    });
+
+    const unsubCompleted = subscribe("task:completed", (payload) => {
+      const p = payload as { task_id: string };
+      if (!matchesPending(p.task_id)) return;
+      finalizePending(true);
+    });
+
+    const unsubFailed = subscribe("task:failed", (payload) => {
+      const p = payload as { task_id: string };
+      if (!matchesPending(p.task_id)) return;
+      finalizePending(false);
+    });
+
+    return () => {
+      unsubMessage();
+      unsubCompleted();
+      unsubFailed();
+    };
+  }, [channelId, qc, subscribe]);
 
   // WS event handler for new messages
   useWSEvent(
@@ -62,27 +106,23 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
   );
 
   const handleSend = useCallback(async () => {
-    if (!channelId || !messageInput.trim()) return;
+    if (!channelId || !editorRef.current) return;
+    const json = editorRef.current.getJSON();
+    if (!json) return;
 
-    const content = JSON.stringify({
-      type: "text",
-      text: messageInput.trim(),
-    });
-
-    await sendMessage.mutateAsync({
+    const result = await sendMessage.mutateAsync({
       channelId,
-      data: { content: JSON.parse(content) },
+      data: { content: json },
     });
 
-    setMessageInput("");
-  }, [channelId, messageInput, sendMessage]);
+    editorRef.current.clearContent();
+    editorRef.current.focus();
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+    // Track task for streaming agent responses
+    if (result.task_id) {
+      pendingTaskRef.current = result.task_id;
     }
-  };
+  }, [channelId, sendMessage]);
 
   if (!channelId) {
     return (
@@ -117,10 +157,7 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="gap-2">
-            <Users className="size-4" />
-            {members.length}
-          </Button>
+          <MemberPopover channelId={channelId} />
           {onClose && (
             <Button variant="ghost" size="sm" onClick={onClose}>
               <X className="size-4" />
@@ -182,32 +219,49 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
                             : "bg-muted"
                       }`}
                     >
-                      {typeof message.content === "string"
-                        ? message.content
-                        : JSON.stringify(message.content)}
+                      {typeof message.content === "string" ? (
+                        message.content
+                      ) : (
+                        <span className="whitespace-pre-wrap">
+                          {tiptapJsonToPlainText(message.content)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
               );
             })
           )}
+
+          {/* Streaming agent response */}
+          {streamingContent && (
+            <div className="flex gap-3">
+              <Avatar className="size-8">
+                <AvatarFallback className="bg-purple-100">
+                  <Bot className="size-4 text-purple-700" />
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col gap-1 max-w-[70%]">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Agent</span>
+                  <Loader2 className="size-3 animate-spin" />
+                </div>
+                <div className="rounded-lg px-3 py-2 text-sm bg-purple-50 text-purple-900 whitespace-pre-wrap">
+                  {streamingContent}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
 
       {/* Input */}
       <div className="p-4 border-t">
-        <div className="flex gap-2">
-          <Input
-            placeholder={`Message #${channel.name}`}
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="flex-1"
-          />
-          <Button onClick={handleSend} disabled={!messageInput.trim()}>
-            <Send className="size-4" />
-          </Button>
-        </div>
+        <ContentEditor
+          ref={editorRef}
+          placeholder={`Message #${channel.name}`}
+          onSubmit={handleSend}
+        />
       </div>
     </div>
   );

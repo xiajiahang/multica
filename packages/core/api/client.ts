@@ -741,6 +741,12 @@ export class ApiClient {
     return this.fetch(`/api/channels/${channelId}/issues`);
   }
 
+  async markChannelRead(channelId: string): Promise<void> {
+    await this.fetch(`/api/channels/${channelId}/read`, {
+      method: "POST",
+    });
+  }
+
   async cancelTaskById(taskId: string): Promise<void> {
     await this.fetch(`/api/tasks/${taskId}/cancel`, { method: "POST" });
   }
