@@ -93,6 +93,8 @@ type AgentTaskResponse struct {
 	TriggerCommentID *string        `json:"trigger_comment_id,omitempty"` // comment that triggered this task
 	ChatSessionID    string         `json:"chat_session_id,omitempty"`    // non-empty for chat tasks
 	ChatMessage      string         `json:"chat_message,omitempty"`       // user message for chat tasks
+	ChannelID        string         `json:"channel_id,omitempty"`         // non-empty for channel tasks
+	TriggerMessageID string         `json:"trigger_message_id,omitempty"` // message that triggered this channel task
 	Channel         *protocol.ChannelContextData `json:"channel,omitempty"` // channel context for channel tasks
 }
 
@@ -124,6 +126,8 @@ func taskToResponse(t db.AgentTaskQueue) AgentTaskResponse {
 		Error:            textToPtr(t.Error),
 		CreatedAt:        timestampToString(t.CreatedAt),
 		TriggerCommentID: uuidToPtr(t.TriggerCommentID),
+		ChannelID:        uuidToString(t.ChannelID),
+		TriggerMessageID: uuidToString(t.TriggerMessageID),
 	}
 }
 

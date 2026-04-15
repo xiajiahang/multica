@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -103,6 +104,11 @@ func (h *Handler) resolveTaskWorkspaceID(r *http.Request, task db.AgentTaskQueue
 	if task.ChatSessionID.Valid {
 		if cs, err := h.Queries.GetChatSession(r.Context(), task.ChatSessionID); err == nil {
 			return uuidToString(cs.WorkspaceID)
+		}
+	}
+	if task.ChannelID.Valid {
+		if ch, err := h.Queries.GetChannel(r.Context(), task.ChannelID); err == nil {
+			return uuidToString(ch.WorkspaceID)
 		}
 	}
 	return ""
@@ -547,6 +553,11 @@ func (h *Handler) ReportTaskProgress(w http.ResponseWriter, r *http.Request) {
 			workspaceID = uuidToString(issue.WorkspaceID)
 		}
 	}
+	if workspaceID == "" && task.ChannelID.Valid {
+		if ch, err := h.Queries.GetChannel(r.Context(), task.ChannelID); err == nil {
+			workspaceID = uuidToString(ch.WorkspaceID)
+		}
+	}
 
 	h.TaskService.ReportProgress(r.Context(), taskID, workspaceID, req.Summary, req.Step, req.Total)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -599,10 +610,32 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 			AuthorType: "agent",
 			AuthorID:   task.AgentID,
 			Content:    content,
-		})
-	}
+			})
 
-	slog.Info("task completed", "task_id", taskID, "agent_id", uuidToString(task.AgentID))
+			// Broadcast the agent's response to channel members via WS.
+			workspaceID := h.resolveTaskWorkspaceID(r, *task)
+			if workspaceID != "" {
+				agentName := ""
+				var name string
+				if err := h.DB.QueryRow(r.Context(), `SELECT name FROM "agent" WHERE id = $1`, task.AgentID).Scan(&name); err == nil {
+					agentName = name
+				}
+				h.publish(protocol.EventChannelMessageNew, workspaceID, "agent", uuidToString(task.AgentID), protocol.ChannelMessagePayload{
+					ChannelID: uuidToString(task.ChannelID),
+					Message: protocol.MessageData{
+						ID:         taskID,
+						AuthorType: "agent",
+						AuthorID:   uuidToString(task.AgentID),
+						AuthorName: agentName,
+						Content:    content,
+						CreatedAt:  time.Now().Format(time.RFC3339Nano),
+					},
+				})
+				h.DB.Exec(r.Context(), `UPDATE channels SET last_message_at = NOW() WHERE id = $1`, task.ChannelID)
+			}
+		}
+
+		slog.Info("task completed", "task_id", taskID, "agent_id", uuidToString(task.AgentID))
 	writeJSON(w, http.StatusOK, taskToResponse(*task))
 }
 
@@ -740,6 +773,11 @@ func (h *Handler) ReportTaskMessages(w http.ResponseWriter, r *http.Request) {
 	if workspaceID == "" && task.ChatSessionID.Valid {
 		if cs, err := h.Queries.GetChatSession(r.Context(), task.ChatSessionID); err == nil {
 			workspaceID = uuidToString(cs.WorkspaceID)
+		}
+	}
+	if workspaceID == "" && task.ChannelID.Valid {
+		if ch, err := h.Queries.GetChannel(r.Context(), task.ChannelID); err == nil {
+			workspaceID = uuidToString(ch.WorkspaceID)
 		}
 	}
 

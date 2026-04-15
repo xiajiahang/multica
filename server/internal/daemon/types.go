@@ -1,5 +1,7 @@
 package daemon
 
+import "encoding/json"
+
 // AgentEntry describes a single available agent CLI.
 type AgentEntry struct {
 	Path  string // path to CLI binary
@@ -20,6 +22,30 @@ type RepoData struct {
 	Description string `json:"description"`
 }
 
+// ChannelContext holds channel metadata for channel tasks.
+type ChannelContext struct {
+	Name     string          `json:"name"`
+	Topic    string          `json:"topic"`
+	Type     string          `json:"type"` // public/private/dm
+	Members  []MemberInfo    `json:"members"`
+	Messages []ChannelMessage `json:"messages"`
+}
+
+// MemberInfo describes a channel member.
+type MemberInfo struct {
+	ID   string `json:"id"`
+	Type string `json:"type"` // user or agent
+}
+
+// ChannelMessage is a message in channel context.
+type ChannelMessage struct {
+	ID         string          `json:"id"`
+	AuthorType string          `json:"author_type"`
+	AuthorID   string          `json:"author_id"`
+	Content    json.RawMessage `json:"content"`
+	CreatedAt  string          `json:"created_at"`
+}
+
 // Task represents a claimed task from the server.
 // Agent data (name, skills) is populated by the claim endpoint.
 type Task struct {
@@ -35,6 +61,9 @@ type Task struct {
 	TriggerCommentID string     `json:"trigger_comment_id,omitempty"` // comment that triggered this task
 	ChatSessionID    string     `json:"chat_session_id,omitempty"`    // non-empty for chat tasks
 	ChatMessage      string     `json:"chat_message,omitempty"`       // user message content for chat tasks
+	ChannelID        string     `json:"channel_id,omitempty"`         // non-empty for channel tasks
+	TriggerMessageID string     `json:"trigger_message_id,omitempty"` // message that triggered this channel task
+	Channel          *ChannelContext `json:"channel,omitempty"`            // channel context for channel tasks
 }
 
 // AgentData holds agent details returned by the claim endpoint.
