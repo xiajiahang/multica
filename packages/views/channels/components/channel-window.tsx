@@ -5,7 +5,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Hash, Loader2, Send, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@multica/ui/components/ui/avatar";
 import { Button } from "@multica/ui/components/ui/button";
-import { ScrollArea } from "@multica/ui/components/ui/scroll-area";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useAuthStore } from "@multica/core/auth";
 import {
@@ -148,12 +147,11 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
             (old) => {
               if (!old) return old;
               if (old.some((m) => m.id === p.message.id)) return old;
-              const newMessages = [...old, p.message];
-              // Scroll to bottom when new message arrives
-              setTimeout(scrollToBottom, 100);
-              return newMessages;
+              return [...old, p.message];
             },
           );
+          // Scroll to bottom after state update
+          setTimeout(scrollToBottom, 100);
         }
       },
       [channelId, qc, scrollToBottom],
@@ -209,7 +207,7 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
 
   if (!channelId) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center text-muted-foreground">
         <div className="text-center">
           <Hash className="size-12 mx-auto mb-2 opacity-50" />
           <p>Select a channel to view messages</p>
@@ -220,16 +218,16 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
 
   if (!channel) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center text-muted-foreground">
         <p>Loading channel...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-background border-l">
+    <div className="flex flex-col flex-1 min-h-0 bg-background border-l">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+      <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
         <div className="flex items-center gap-2">
           <Hash className="size-5 text-muted-foreground" />
           <span className="font-semibold">{channel.name}</span>
@@ -250,7 +248,7 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 px-4 py-4">
+      <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
         <div className="space-y-4">
           {messages.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
@@ -349,10 +347,10 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
           {/* Scroll anchor */}
           <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
-      <div className="p-4 border-t">
+      <div className="p-4 border-t shrink-0">
         <div className="relative">
           <ContentEditor
             ref={editorRef}

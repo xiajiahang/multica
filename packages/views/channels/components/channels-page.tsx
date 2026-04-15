@@ -14,9 +14,9 @@ export function ChannelsPage() {
   };
 
   return (
-    <div className="flex flex-1 min-h-0 h-full">
+    <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 shrink-0 border-r">
+      <div className="w-64 shrink-0 border-r overflow-hidden">
         <ChannelList
           selectedChannelId={selectedChannelId}
           onSelectChannel={setSelectedChannelId}
@@ -24,7 +24,7 @@ export function ChannelsPage() {
         />
       </div>
       {/* Main content */}
-      <div className="flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0">
         <ChannelWindow
           channelId={selectedChannelId}
           onClose={() => setSelectedChannelId(null)}
