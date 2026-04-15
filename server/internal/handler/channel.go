@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -217,12 +216,15 @@ func (h *Handler) MarkChannelRead(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
 
 	_, err := h.DB.Exec(r.Context(), `
 		UPDATE channel_members SET last_read_at = NOW()
-		WHERE channel_id = $1 AND member_type = 'user' AND member_id = $2
-	`, parseUUID(channelID), parseUUID(userID))
+		WHERE channel_id = $1 AND member_type = 'user' AND member_id = (
+			SELECT id FROM member WHERE user_id = $2 AND workspace_id = $3
+		)
+	`, parseUUID(channelID), parseUUID(userID), parseUUID(workspaceID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to mark read")
 		return
@@ -433,10 +435,14 @@ func (h *Handler) SendChannelMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify user is a channel member.
+	// Verify user is a channel member (JOIN member table to resolve user_id → member_id).
 	var memberExists bool
 	h.DB.QueryRow(r.Context(), `
-		SELECT EXISTS(SELECT 1 FROM channel_members WHERE channel_id = $1 AND member_type = 'user' AND member_id = $2)
+		SELECT EXISTS(
+			SELECT 1 FROM channel_members cm
+			JOIN member m ON m.id = cm.member_id
+			WHERE cm.channel_id = $1 AND cm.member_type = 'user' AND m.user_id = $2
+		)
 	`, parseUUID(channelID), parseUUID(userID)).Scan(&memberExists)
 	if !memberExists {
 		writeError(w, http.StatusForbidden, "not a channel member")
@@ -522,7 +528,7 @@ func (h *Handler) handleChannelMentions(ctx context.Context, channelID string, m
 		// Get agent runtime.
 		var runtimeID pgtype.UUID
 		var archivedAt pgtype.Timestamptz
-		err := h.DB.QueryRow(ctx, `SELECT runtime_id, archived_at FROM agents WHERE id = $1`, parseUUID(agentID)).Scan(&runtimeID, &archivedAt)
+		err := h.DB.QueryRow(ctx, `SELECT runtime_id, archived_at FROM agent WHERE id = $1`, parseUUID(agentID)).Scan(&runtimeID, &archivedAt)
 		if err != nil || !runtimeID.Valid || archivedAt.Valid {
 			continue
 		}
@@ -554,6 +560,7 @@ func (h *Handler) handleChannelMentions(ctx context.Context, channelID string, m
 }
 
 // extractAgentMentions walks a Tiptap JSON tree and returns unique agent IDs from @mention nodes.
+// The mention node has attrs.type === "agent" and attrs.id as the agent UUID.
 func extractAgentMentions(node any) []string {
 	var result []string
 	var walk func(n any)
@@ -562,8 +569,10 @@ func extractAgentMentions(node any) []string {
 		case map[string]any:
 			if v["type"] == "mention" {
 				if attrs, ok := v["attrs"].(map[string]any); ok {
-					if id, ok := attrs["id"].(string); ok && strings.HasPrefix(id, "agent:") {
-						result = append(result, strings.TrimPrefix(id, "agent:"))
+					if attrs["type"] == "agent" {
+						if id, ok := attrs["id"].(string); ok && id != "" {
+							result = append(result, id)
+						}
 					}
 				}
 			}
