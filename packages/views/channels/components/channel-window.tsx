@@ -9,12 +9,13 @@ import { useWorkspaceId } from "@multica/core/hooks";
 import { useAuthStore } from "@multica/core/auth";
 import {
   channelOptions,
+  channelMembersOptions,
   channelMessagesOptions,
   channelKeys,
 } from "@multica/core/channels/queries";
 import { agentListOptions } from "@multica/core/workspace/queries";
 import { memberListOptions } from "@multica/core/workspace/queries";
-import { useSendChannelMessage } from "@multica/core/channels/mutations";
+import { useMarkChannelRead, useSendChannelMessage } from "@multica/core/channels/mutations";
 import { useWS, useWSEvent } from "@multica/core/realtime";
 import type { ChannelMessage, TaskMessagePayload } from "@multica/core/types";
 import { tiptapJsonToPlainText } from "../utils/message-content";
@@ -33,6 +34,9 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
   const editorRef = useRef<ContentEditorRef>(null);
 
   const { data: channel } = useQuery(channelOptions(wsId, channelId ?? ""));
+  const { data: channelMembers = [] } = useQuery(
+    channelMembersOptions(channelId ?? ""),
+  );
   const { data: messages = [] } = useQuery(
     channelMessagesOptions(channelId ?? ""),
   );
@@ -40,6 +44,7 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
   const { data: members = [] } = useQuery(memberListOptions(wsId ?? ""));
 
   const sendMessage = useSendChannelMessage();
+  const markChannelRead = useMarkChannelRead();
 
   // Build lookup maps for author names
   const agentMap = new Map(agents.map((a) => [a.id, a]));
@@ -71,6 +76,18 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
     [agentMap, memberMap],
   );
 
+  const mentionScope = {
+    memberIds: channelMembers
+      .filter((member) => member.member_type === "user")
+      .map((member) => members.find((workspaceMember) => workspaceMember.id === member.member_id)?.user_id)
+      .filter((id): id is string => !!id),
+    agentIds: channelMembers
+      .filter((member) => member.member_type === "agent")
+      .map((member) => member.member_id),
+    includeAll: false,
+    includeIssues: true,
+  };
+
   const { subscribe } = useWS();
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [pendingTaskAgentName, setPendingTaskAgentName] = useState<string | null>(null);
@@ -89,6 +106,11 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
       setTimeout(scrollToBottom, 100);
     }
   }, [messages.length, scrollToBottom]);
+
+  useEffect(() => {
+    if (!channelId) return;
+    void markChannelRead.mutateAsync(channelId).catch(() => undefined);
+  }, [channelId, markChannelRead]);
 
   // Subscribe to task streaming events for agent responses
   useEffect(() => {
@@ -357,6 +379,7 @@ export function ChannelWindow({ channelId, onClose }: ChannelWindowProps) {
             placeholder={`Message #${channel.name}`}
             onSubmit={handleSend}
             enterToSend
+            mentionScope={mentionScope}
           />
           <Button
             variant="ghost"

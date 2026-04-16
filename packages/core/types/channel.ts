@@ -58,7 +58,7 @@ export interface SendChannelMessageRequest {
 
 export interface SendChannelMessageResponse {
   message_id: string;
-  task_id: string;
+  task_id?: string;
 }
 
 export interface CreateOrGetDMRequest {

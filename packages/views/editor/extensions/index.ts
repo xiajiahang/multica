@@ -36,7 +36,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import type { AnyExtension } from "@tiptap/core";
 import type { UploadResult } from "@multica/core/hooks/use-file-upload";
 import { BaseMentionExtension } from "./mention-extension";
-import { createMentionSuggestion } from "./mention-suggestion";
+import { createMentionSuggestion, type MentionSuggestionScope } from "./mention-suggestion";
 import { CodeBlockView } from "./code-block-view";
 import { createMarkdownPasteExtension } from "./markdown-paste";
 import { createSubmitExtension } from "./submit-shortcut";
@@ -81,6 +81,7 @@ export interface EditorExtensionsOptions {
   editable: boolean;
   placeholder?: string;
   queryClient?: import("@tanstack/react-query").QueryClient;
+  mentionScope?: MentionSuggestionScope;
   onSubmitRef?: RefObject<(() => void) | undefined>;
   onUploadFileRef?: RefObject<
     ((file: File) => Promise<UploadResult | null>) | undefined
@@ -114,7 +115,9 @@ export function createEditorExtensions(
     FileCardExtension,
     BaseMentionExtension.configure({
       HTMLAttributes: { class: "mention" },
-      ...(editable && options.queryClient ? { suggestion: createMentionSuggestion(options.queryClient) } : {}),
+      ...(editable && options.queryClient
+        ? { suggestion: createMentionSuggestion(options.queryClient, options.mentionScope) }
+        : {}),
     }),
   ];
 

@@ -53,6 +53,13 @@ interface MentionGroup {
   items: MentionItem[];
 }
 
+export interface MentionSuggestionScope {
+  memberIds?: string[];
+  agentIds?: string[];
+  includeAll?: boolean;
+  includeIssues?: boolean;
+}
+
 function groupItems(items: MentionItem[]): MentionGroup[] {
   const users: MentionItem[] = [];
   const issues: MentionItem[] = [];
@@ -213,7 +220,10 @@ function MentionRow({
 // Suggestion config factory
 // ---------------------------------------------------------------------------
 
-export function createMentionSuggestion(qc: QueryClient): Omit<
+export function createMentionSuggestion(
+  qc: QueryClient,
+  scope?: MentionSuggestionScope,
+): Omit<
   SuggestionOptions<MentionItem>,
   "editor"
 > {
@@ -227,14 +237,19 @@ export function createMentionSuggestion(qc: QueryClient): Omit<
         : [];
 
       const q = query.toLowerCase();
+      const allowedMemberIds = scope?.memberIds ? new Set(scope.memberIds) : null;
+      const allowedAgentIds = scope?.agentIds ? new Set(scope.agentIds) : null;
+      const includeAll = scope?.includeAll ?? true;
+      const includeIssues = scope?.includeIssues ?? true;
 
       // Show "All members" option when query is empty or matches "all"
       const allItem: MentionItem[] =
-        "all members".includes(q) || "all".includes(q)
+        includeAll && ("all members".includes(q) || "all".includes(q))
           ? [{ id: "all", label: "All members", type: "all" as const }]
           : [];
 
       const memberItems: MentionItem[] = members
+        .filter((m) => !allowedMemberIds || allowedMemberIds.has(m.user_id))
         .filter((m) => m.name.toLowerCase().includes(q))
         .map((m) => ({
           id: m.user_id,
@@ -243,10 +258,12 @@ export function createMentionSuggestion(qc: QueryClient): Omit<
         }));
 
       const agentItems: MentionItem[] = agents
+        .filter((a) => !allowedAgentIds || allowedAgentIds.has(a.id))
         .filter((a) => !a.archived_at && a.name.toLowerCase().includes(q))
         .map((a) => ({ id: a.id, label: a.name, type: "agent" as const }));
 
-      const issueItems: MentionItem[] = issues
+      const issueItems: MentionItem[] = includeIssues
+        ? issues
         .filter(
           (i) =>
             i.identifier.toLowerCase().includes(q) ||
@@ -258,7 +275,8 @@ export function createMentionSuggestion(qc: QueryClient): Omit<
           type: "issue" as const,
           description: i.title,
           status: i.status as IssueStatus,
-        }));
+        }))
+        : [];
 
       return [...allItem, ...memberItems, ...agentItems, ...issueItems].slice(0, 10);
     },

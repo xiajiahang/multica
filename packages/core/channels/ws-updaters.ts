@@ -84,7 +84,7 @@ export function onChannelMemberJoined(
 export function onChannelMemberLeft(qc: QueryClient, channelId: string, memberId: string) {
   qc.setQueryData<ChannelMember[]>(channelKeys.members(channelId), (old) => {
     if (!old) return old;
-    return old.filter((m) => m.id !== memberId);
+    return old.filter((m) => m.member_id !== memberId);
   });
 }
 

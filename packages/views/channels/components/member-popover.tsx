@@ -39,14 +39,14 @@ export function MemberPopover({ channelId }: MemberPopoverProps) {
   const addMember = useAddChannelMember();
   const removeMember = useRemoveChannelMember();
 
-  const existingMemberIds = new Set(members.map((m) => m.member_id));
+  const existingMembers = new Set(members.map((m) => `${m.member_type}:${m.member_id}`));
 
   // Filter workspace members/agents not already in channel
   const availableUsers = workspaceMembers.filter(
-    (m) => !existingMemberIds.has(m.user_id),
+    (m) => !existingMembers.has(`user:${m.id}`),
   );
   const availableAgents = agents.filter(
-    (a) => !existingMemberIds.has(a.id) && !a.archived_at,
+    (a) => !existingMembers.has(`agent:${a.id}`) && !a.archived_at,
   );
 
   // Search filter
@@ -128,9 +128,9 @@ export function MemberPopover({ channelId }: MemberPopoverProps) {
                 ))}
                 {filteredUsers.map((m) => (
                   <button
-                    key={m.user_id}
+                    key={m.id}
                     className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md hover:bg-accent text-left"
-                    onClick={() => handleAdd("user", m.user_id)}
+                    onClick={() => handleAdd("user", m.id)}
                   >
                     <Avatar className="size-6">
                       <AvatarImage src={m.avatar_url ?? undefined} />
@@ -166,10 +166,10 @@ export function MemberPopover({ channelId }: MemberPopoverProps) {
             <ScrollArea className="max-h-48">
               <div className="space-y-1">
                 {members.map((member) => {
-                  const isSelf = member.member_id === user?.id;
+                  const isSelf = member.member_type === "user" && workspaceMembers.some((m) => m.id === member.member_id && m.user_id === user?.id);
                   // Look up display name from workspace members / agents
                   const wsMember = workspaceMembers.find(
-                    (m) => m.user_id === member.member_id,
+                    (m) => m.id === member.member_id,
                   );
                   const agent = agents.find((a) => a.id === member.member_id);
                   const displayName =

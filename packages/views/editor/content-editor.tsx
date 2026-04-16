@@ -37,6 +37,7 @@ import type { UploadResult } from "@multica/core/hooks/use-file-upload";
 import { useQueryClient } from "@tanstack/react-query";
 import { createEditorExtensions } from "./extensions";
 import { uploadAndInsertFile } from "./extensions/file-upload";
+import type { MentionSuggestionScope } from "./extensions/mention-suggestion";
 import { preprocessMarkdown } from "./utils/preprocess";
 import "./content-editor.css";
 
@@ -51,6 +52,7 @@ interface ContentEditorProps {
   editable?: boolean;
   className?: string;
   debounceMs?: number;
+  mentionScope?: MentionSuggestionScope;
   onSubmit?: () => void;
   onBlur?: () => void;
   onUploadFile?: (file: File) => Promise<UploadResult | null>;
@@ -79,6 +81,7 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       editable = true,
       className,
       debounceMs = 300,
+      mentionScope,
       onSubmit,
       onBlur,
       onUploadFile,
@@ -110,6 +113,7 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
         editable,
         placeholder: placeholderText,
         queryClient,
+        mentionScope,
         onSubmitRef,
         onUploadFileRef,
         enterToSend,

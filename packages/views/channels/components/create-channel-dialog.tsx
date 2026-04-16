@@ -158,9 +158,9 @@ export function CreateChannelDialog({ open, onClose, onSuccess }: CreateChannelD
                   .filter((m) => !dmSearch || (m.name ?? "").toLowerCase().includes(dmSearch.toLowerCase()))
                   .map((m) => (
                     <button
-                      key={m.user_id}
+                      key={m.id}
                       type="button"
-                      onClick={() => handleDMSelect("user", m.user_id, m.name ?? "Unknown")}
+                      onClick={() => handleDMSelect("user", m.id, m.name ?? "Unknown")}
                       className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md hover:bg-accent text-left"
                     >
                       <Avatar className="size-6">

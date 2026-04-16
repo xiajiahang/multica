@@ -25,9 +25,84 @@ type CreateChannelRequest struct {
 	Topic string `json:"topic"`
 }
 
+func (h *Handler) loadChannel(ctx context.Context, workspaceID, channelID string) (db.Channel, error) {
+	var channel db.Channel
+	err := h.DB.QueryRow(ctx, `
+		SELECT id, workspace_id, name, type, topic, created_by, last_message_at, created_at, updated_at
+		FROM channels WHERE id = $1 AND workspace_id = $2
+	`, parseUUID(channelID), parseUUID(workspaceID)).Scan(
+		&channel.ID, &channel.WorkspaceID, &channel.Name, &channel.Type, &channel.Topic,
+		&channel.CreatedBy, &channel.LastMessageAt, &channel.CreatedAt, &channel.UpdatedAt)
+	return channel, err
+}
+
+func (h *Handler) loadChannelMembership(ctx context.Context, channelID string, memberID pgtype.UUID) (db.ChannelMember, error) {
+	var membership db.ChannelMember
+	err := h.DB.QueryRow(ctx, `
+		SELECT id, channel_id, member_type, member_id, role, last_read_at, joined_at
+		FROM channel_members
+		WHERE channel_id = $1 AND member_type = 'user' AND member_id = $2
+	`, parseUUID(channelID), memberID).Scan(
+		&membership.ID, &membership.ChannelID, &membership.MemberType, &membership.MemberID,
+		&membership.Role, &membership.LastReadAt, &membership.JoinedAt)
+	return membership, err
+}
+
+func (h *Handler) requireChannelMember(
+	w http.ResponseWriter,
+	r *http.Request,
+	workspaceID, channelID string,
+) (db.Channel, db.Member, db.ChannelMember, bool) {
+	channel, err := h.loadChannel(r.Context(), workspaceID, channelID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "channel not found")
+			return db.Channel{}, db.Member{}, db.ChannelMember{}, false
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load channel")
+		return db.Channel{}, db.Member{}, db.ChannelMember{}, false
+	}
+
+	member, ok := h.workspaceMember(w, r, workspaceID)
+	if !ok {
+		return db.Channel{}, db.Member{}, db.ChannelMember{}, false
+	}
+
+	membership, err := h.loadChannelMembership(r.Context(), channelID, member.ID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusForbidden, "not a channel member")
+			return db.Channel{}, db.Member{}, db.ChannelMember{}, false
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load channel membership")
+		return db.Channel{}, db.Member{}, db.ChannelMember{}, false
+	}
+
+	return channel, member, membership, true
+}
+
+func (h *Handler) requireChannelAdmin(
+	w http.ResponseWriter,
+	r *http.Request,
+	workspaceID, channelID string,
+) (db.Channel, db.Member, db.ChannelMember, bool) {
+	channel, member, membership, ok := h.requireChannelMember(w, r, workspaceID, channelID)
+	if !ok {
+		return db.Channel{}, db.Member{}, db.ChannelMember{}, false
+	}
+	if membership.Role != "admin" {
+		writeError(w, http.StatusForbidden, "insufficient permissions")
+		return db.Channel{}, db.Member{}, db.ChannelMember{}, false
+	}
+	return channel, member, membership, true
+}
+
 func (h *Handler) ListChannels(w http.ResponseWriter, r *http.Request) {
 	workspaceID := ctxWorkspaceID(r.Context())
-	userID, _ := requireUserID(w, r)
+	member, ok := h.workspaceMember(w, r, workspaceID)
+	if !ok {
+		return
+	}
 
 	rows, err := h.DB.Query(r.Context(), `
 		SELECT c.id, c.workspace_id, c.name, c.type, c.topic, c.created_by, c.last_message_at, c.created_at, c.updated_at,
@@ -38,10 +113,11 @@ func (h *Handler) ListChannels(w http.ResponseWriter, r *http.Request) {
 				0
 			)::int AS unread_count
 		FROM channels c
+		JOIN channel_members visible_cm ON visible_cm.channel_id = c.id AND visible_cm.member_type = 'user' AND visible_cm.member_id = $2
 		LEFT JOIN channel_members cm ON cm.channel_id = c.id AND cm.member_type = 'user' AND cm.member_id = $2
 		WHERE c.workspace_id = $1
 		ORDER BY c.last_message_at DESC NULLS LAST
-	`, parseUUID(workspaceID), parseUUID(userID))
+	`, parseUUID(workspaceID), member.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list channels")
 		return
@@ -79,11 +155,8 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	workspaceID := ctxWorkspaceID(r.Context())
 
 	// Look up member ID for the current user in this workspace.
-	var memberID pgtype.UUID
-	if err := h.DB.QueryRow(r.Context(), `
-		SELECT id FROM member WHERE user_id = $1 AND workspace_id = $2
-	`, parseUUID(userID), parseUUID(workspaceID)).Scan(&memberID); err != nil {
-		writeError(w, http.StatusForbidden, "not a workspace member")
+	member, ok := h.workspaceMember(w, r, workspaceID)
+	if !ok {
 		return
 	}
 
@@ -109,7 +182,7 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO channels (workspace_id, name, type, topic, created_by)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, workspace_id, name, type, topic, created_by, last_message_at, created_at, updated_at
-	`, parseUUID(workspaceID), req.Name, req.Type, req.Topic, memberID).Scan(
+	`, parseUUID(workspaceID), req.Name, req.Type, req.Topic, member.ID).Scan(
 		&channel.ID, &channel.WorkspaceID, &channel.Name, &channel.Type, &channel.Topic,
 		&channel.CreatedBy, &channel.LastMessageAt, &channel.CreatedAt, &channel.UpdatedAt)
 	if err != nil {
@@ -121,7 +194,7 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	h.DB.Exec(r.Context(), `
 		INSERT INTO channel_members (channel_id, member_type, member_id, role)
 		VALUES ($1, 'user', $2, 'admin')
-	`, channel.ID, memberID)
+	`, channel.ID, member.ID)
 
 	h.publish(protocol.EventChannelCreated, workspaceID, "member", userID, map[string]any{
 		"channel": channelToResponse(channel),
@@ -133,19 +206,8 @@ func (h *Handler) GetChannel(w http.ResponseWriter, r *http.Request) {
 	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
 
-	var channel db.Channel
-	err := h.DB.QueryRow(r.Context(), `
-		SELECT id, workspace_id, name, type, topic, created_by, last_message_at, created_at, updated_at
-		FROM channels WHERE id = $1 AND workspace_id = $2
-	`, parseUUID(channelID), parseUUID(workspaceID)).Scan(
-		&channel.ID, &channel.WorkspaceID, &channel.Name, &channel.Type, &channel.Topic,
-		&channel.CreatedBy, &channel.LastMessageAt, &channel.CreatedAt, &channel.UpdatedAt)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			writeError(w, http.StatusNotFound, "channel not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "failed to get channel")
+	channel, _, _, ok := h.requireChannelMember(w, r, workspaceID, channelID)
+	if !ok {
 		return
 	}
 
@@ -159,6 +221,10 @@ func (h *Handler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
+	_, _, _, ok = h.requireChannelAdmin(w, r, workspaceID, channelID)
+	if !ok {
+		return
+	}
 
 	var req struct {
 		Name  *string `json:"name"`
@@ -175,9 +241,9 @@ func (h *Handler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
 		SET name = COALESCE($2, name),
 		    topic = COALESCE($3, topic),
 		    updated_at = NOW()
-		WHERE id = $1
+		WHERE id = $1 AND workspace_id = $4
 		RETURNING id, workspace_id, name, type, topic, created_by, last_message_at, created_at, updated_at
-	`, parseUUID(channelID), req.Name, req.Topic).Scan(
+	`, parseUUID(channelID), req.Name, req.Topic, parseUUID(workspaceID)).Scan(
 		&channel.ID, &channel.WorkspaceID, &channel.Name, &channel.Type, &channel.Topic,
 		&channel.CreatedBy, &channel.LastMessageAt, &channel.CreatedAt, &channel.UpdatedAt)
 	if err != nil {
@@ -198,8 +264,12 @@ func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
+	_, _, _, ok = h.requireChannelAdmin(w, r, workspaceID, channelID)
+	if !ok {
+		return
+	}
 
-	_, err := h.DB.Exec(r.Context(), `DELETE FROM channels WHERE id = $1`, parseUUID(channelID))
+	_, err := h.DB.Exec(r.Context(), `DELETE FROM channels WHERE id = $1 AND workspace_id = $2`, parseUUID(channelID), parseUUID(workspaceID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete channel")
 		return
@@ -212,19 +282,21 @@ func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) MarkChannelRead(w http.ResponseWriter, r *http.Request) {
-	userID, ok := requireUserID(w, r)
+	_, ok := requireUserID(w, r)
 	if !ok {
 		return
 	}
 	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
+	_, member, _, ok := h.requireChannelMember(w, r, workspaceID, channelID)
+	if !ok {
+		return
+	}
 
 	_, err := h.DB.Exec(r.Context(), `
 		UPDATE channel_members SET last_read_at = NOW()
-		WHERE channel_id = $1 AND member_type = 'user' AND member_id = (
-			SELECT id FROM member WHERE user_id = $2 AND workspace_id = $3
-		)
-	`, parseUUID(channelID), parseUUID(userID), parseUUID(workspaceID))
+		WHERE channel_id = $1 AND member_type = 'user' AND member_id = $2
+	`, parseUUID(channelID), member.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to mark read")
 		return
@@ -239,13 +311,8 @@ func (h *Handler) MarkChannelRead(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListChannelMembers(w http.ResponseWriter, r *http.Request) {
 	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
-
-	// Verify channel exists.
-	var exists bool
-	h.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM channels WHERE id = $1 AND workspace_id = $2)`,
-		parseUUID(channelID), parseUUID(workspaceID)).Scan(&exists)
-	if !exists {
-		writeError(w, http.StatusNotFound, "channel not found")
+	_, _, _, ok := h.requireChannelMember(w, r, workspaceID, channelID)
+	if !ok {
 		return
 	}
 
@@ -288,6 +355,10 @@ func (h *Handler) AddChannelMember(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
+	_, _, _, ok = h.requireChannelAdmin(w, r, workspaceID, channelID)
+	if !ok {
+		return
+	}
 
 	var req AddChannelMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -301,6 +372,28 @@ func (h *Handler) AddChannelMember(w http.ResponseWriter, r *http.Request) {
 	if req.Role == "" {
 		req.Role = "member"
 	}
+	if req.Role != "admin" && req.Role != "member" {
+		writeError(w, http.StatusBadRequest, "role must be admin or member")
+		return
+	}
+
+	if req.MemberType == "user" {
+		var exists bool
+		if err := h.DB.QueryRow(r.Context(), `
+			SELECT EXISTS(SELECT 1 FROM member WHERE id = $1 AND workspace_id = $2)
+		`, parseUUID(req.MemberID), parseUUID(workspaceID)).Scan(&exists); err != nil || !exists {
+			writeError(w, http.StatusBadRequest, "member not found in workspace")
+			return
+		}
+	} else {
+		var exists bool
+		if err := h.DB.QueryRow(r.Context(), `
+			SELECT EXISTS(SELECT 1 FROM agent WHERE id = $1 AND workspace_id = $2 AND archived_at IS NULL)
+		`, parseUUID(req.MemberID), parseUUID(workspaceID)).Scan(&exists); err != nil || !exists {
+			writeError(w, http.StatusBadRequest, "agent not found in workspace")
+			return
+		}
+	}
 
 	var member db.ChannelMember
 	err := h.DB.QueryRow(r.Context(), `
@@ -310,14 +403,17 @@ func (h *Handler) AddChannelMember(w http.ResponseWriter, r *http.Request) {
 	`, parseUUID(channelID), req.MemberType, parseUUID(req.MemberID), req.Role).Scan(
 		&member.ID, &member.ChannelID, &member.MemberType, &member.MemberID, &member.Role, &member.LastReadAt, &member.JoinedAt)
 	if err != nil {
+		if isUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "member already in channel")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to add member")
 		return
 	}
 
 	h.publish(protocol.EventChannelMemberJoined, workspaceID, "member", userID, map[string]any{
-		"channel_id":  channelID,
-		"member_type": req.MemberType,
-		"member_id":   req.MemberID,
+		"channel_id": channelID,
+		"member":     channelMemberToResponse(member),
 	})
 	writeJSON(w, http.StatusCreated, channelMemberToResponse(member))
 }
@@ -331,6 +427,10 @@ func (h *Handler) RemoveChannelMember(w http.ResponseWriter, r *http.Request) {
 	channelID := chi.URLParam(r, "channelId")
 	memberType := chi.URLParam(r, "memberType")
 	memberID := chi.URLParam(r, "memberId")
+	_, _, _, ok = h.requireChannelAdmin(w, r, workspaceID, channelID)
+	if !ok {
+		return
+	}
 
 	_, err := h.DB.Exec(r.Context(), `
 		DELETE FROM channel_members WHERE channel_id = $1 AND member_type = $2 AND member_id = $3
@@ -342,7 +442,6 @@ func (h *Handler) RemoveChannelMember(w http.ResponseWriter, r *http.Request) {
 
 	h.publish(protocol.EventChannelMemberLeft, workspaceID, "member", userID, map[string]any{
 		"channel_id":  channelID,
-		"member_type": memberType,
 		"member_id":   memberID,
 	})
 	w.WriteHeader(http.StatusNoContent)
@@ -362,7 +461,11 @@ type SendChannelMessageResponse struct {
 }
 
 func (h *Handler) ListChannelMessages(w http.ResponseWriter, r *http.Request) {
+	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
+	if _, _, _, ok := h.requireChannelMember(w, r, workspaceID, channelID); !ok {
+		return
+	}
 
 	cursor := r.URL.Query().Get("cursor")
 	limitStr := r.URL.Query().Get("limit")
@@ -424,6 +527,10 @@ func (h *Handler) SendChannelMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
+	_, member, _, ok := h.requireChannelMember(w, r, workspaceID, channelID)
+	if !ok {
+		return
+	}
 
 	var req SendChannelMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -432,20 +539,6 @@ func (h *Handler) SendChannelMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.Content) == 0 {
 		writeError(w, http.StatusBadRequest, "content is required")
-		return
-	}
-
-	// Verify user is a channel member (JOIN member table to resolve user_id → member_id).
-	var memberExists bool
-	h.DB.QueryRow(r.Context(), `
-		SELECT EXISTS(
-			SELECT 1 FROM channel_members cm
-			JOIN member m ON m.id = cm.member_id
-			WHERE cm.channel_id = $1 AND cm.member_type = 'user' AND m.user_id = $2
-		)
-	`, parseUUID(channelID), parseUUID(userID)).Scan(&memberExists)
-	if !memberExists {
-		writeError(w, http.StatusForbidden, "not a channel member")
 		return
 	}
 
@@ -491,9 +584,9 @@ func (h *Handler) SendChannelMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Update last_read_at for the sender.
 	h.DB.Exec(r.Context(), `
-		UPDATE channel_members SET last_read_at = $4
+		UPDATE channel_members SET last_read_at = $3
 		WHERE channel_id = $1 AND member_type = 'user' AND member_id = $2
-	`, parseUUID(channelID), parseUUID(userID), msg.CreatedAt)
+	`, parseUUID(channelID), member.ID, msg.CreatedAt)
 
 	resp := SendChannelMessageResponse{MessageID: uuidToString(msg.ID)}
 	if taskID != "" {
@@ -603,7 +696,8 @@ func extractAgentMentions(node any) []string {
 // ---------------------------------------------------------------------------
 
 type CreateOrGetDMRequest struct {
-	MemberID string `json:"member_id"` // the other member/agent ID
+	OtherMemberType string `json:"other_member_type"` // user or agent
+	OtherMemberID   string `json:"other_member_id"`
 }
 
 func (h *Handler) CreateOrGetDM(w http.ResponseWriter, r *http.Request) {
@@ -613,12 +707,8 @@ func (h *Handler) CreateOrGetDM(w http.ResponseWriter, r *http.Request) {
 	}
 	workspaceID := ctxWorkspaceID(r.Context())
 
-	// Look up member ID for the current user.
-	var callerMemberID pgtype.UUID
-	if err := h.DB.QueryRow(r.Context(), `
-		SELECT id FROM member WHERE user_id = $1 AND workspace_id = $2
-	`, parseUUID(userID), parseUUID(workspaceID)).Scan(&callerMemberID); err != nil {
-		writeError(w, http.StatusForbidden, "not a workspace member")
+	callerMember, ok := h.workspaceMember(w, r, workspaceID)
+	if !ok {
 		return
 	}
 
@@ -627,12 +717,38 @@ func (h *Handler) CreateOrGetDM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.MemberID == "" {
-		writeError(w, http.StatusBadRequest, "member_id is required")
+	if req.OtherMemberType != "user" && req.OtherMemberType != "agent" {
+		writeError(w, http.StatusBadRequest, "other_member_type must be user or agent")
+		return
+	}
+	if req.OtherMemberID == "" {
+		writeError(w, http.StatusBadRequest, "other_member_id is required")
+		return
+	}
+	if req.OtherMemberType == "user" && req.OtherMemberID == uuidToString(callerMember.ID) {
+		writeError(w, http.StatusBadRequest, "cannot create a DM with yourself")
 		return
 	}
 
-	// Find existing DM channel between these two users.
+	if req.OtherMemberType == "user" {
+		var exists bool
+		if err := h.DB.QueryRow(r.Context(), `
+			SELECT EXISTS(SELECT 1 FROM member WHERE id = $1 AND workspace_id = $2)
+		`, parseUUID(req.OtherMemberID), parseUUID(workspaceID)).Scan(&exists); err != nil || !exists {
+			writeError(w, http.StatusBadRequest, "member not found in workspace")
+			return
+		}
+	} else {
+		var exists bool
+		if err := h.DB.QueryRow(r.Context(), `
+			SELECT EXISTS(SELECT 1 FROM agent WHERE id = $1 AND workspace_id = $2 AND archived_at IS NULL)
+		`, parseUUID(req.OtherMemberID), parseUUID(workspaceID)).Scan(&exists); err != nil || !exists {
+			writeError(w, http.StatusBadRequest, "agent not found in workspace")
+			return
+		}
+	}
+
+	// Find existing DM channel between these exact two members.
 	rows, err := h.DB.Query(r.Context(), `
 		SELECT c.id, c.workspace_id, c.name, c.type, c.topic, c.created_by, c.last_message_at, c.created_at, c.updated_at
 		FROM channels c
@@ -651,32 +767,37 @@ func (h *Handler) CreateOrGetDM(w http.ResponseWriter, r *http.Request) {
 		}
 
 		memberRows, err := h.DB.Query(r.Context(), `
-			SELECT member_id FROM channel_members WHERE channel_id = $1
+			SELECT member_type, member_id FROM channel_members WHERE channel_id = $1
 		`, ch.ID)
 		if err != nil {
 			continue
 		}
-		var memberIDs []string
+		type dmMember struct {
+			memberType string
+			memberID   string
+		}
+		var members []dmMember
 		for memberRows.Next() {
-			var mid string
-			if memberRows.Scan(&mid) == nil {
-				memberIDs = append(memberIDs, mid)
+			var memberType string
+			var memberID string
+			if memberRows.Scan(&memberType, &memberID) == nil {
+				members = append(members, dmMember{memberType: memberType, memberID: memberID})
 			}
 		}
 		memberRows.Close()
 
-		if len(memberIDs) == 2 {
-			hasUser := false
+		if len(members) == 2 {
+			hasCaller := false
 			hasOther := false
-			for _, mid := range memberIDs {
-				if mid == userID {
-					hasUser = true
+			for _, candidate := range members {
+				if candidate.memberType == "user" && candidate.memberID == uuidToString(callerMember.ID) {
+					hasCaller = true
 				}
-				if mid == req.MemberID {
+				if candidate.memberType == req.OtherMemberType && candidate.memberID == req.OtherMemberID {
 					hasOther = true
 				}
 			}
-			if hasUser && hasOther {
+			if hasCaller && hasOther {
 				writeJSON(w, http.StatusOK, channelToResponse(ch))
 				return
 			}
@@ -689,7 +810,7 @@ func (h *Handler) CreateOrGetDM(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO channels (workspace_id, name, type, created_by)
 		VALUES ($1, 'dm', 'dm', $2)
 		RETURNING id, workspace_id, name, type, topic, created_by, last_message_at, created_at, updated_at
-	`, parseUUID(workspaceID), callerMemberID).Scan(
+	`, parseUUID(workspaceID), callerMember.ID).Scan(
 		&channel.ID, &channel.WorkspaceID, &channel.Name, &channel.Type, &channel.Topic,
 		&channel.CreatedBy, &channel.LastMessageAt, &channel.CreatedAt, &channel.UpdatedAt)
 	if err != nil {
@@ -698,12 +819,14 @@ func (h *Handler) CreateOrGetDM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add both members.
-	for _, mid := range []string{userID, req.MemberID} {
-		h.DB.Exec(r.Context(), `
-			INSERT INTO channel_members (channel_id, member_type, member_id, role)
-			VALUES ($1, 'user', $2, 'member')
-		`, channel.ID, parseUUID(mid))
-	}
+	h.DB.Exec(r.Context(), `
+		INSERT INTO channel_members (channel_id, member_type, member_id, role)
+		VALUES ($1, 'user', $2, 'member')
+	`, channel.ID, callerMember.ID)
+	h.DB.Exec(r.Context(), `
+		INSERT INTO channel_members (channel_id, member_type, member_id, role)
+		VALUES ($1, $2, $3, 'member')
+	`, channel.ID, req.OtherMemberType, parseUUID(req.OtherMemberID))
 
 	h.publish(protocol.EventChannelCreated, workspaceID, "member", userID, map[string]any{
 		"channel": channelToResponse(channel),
@@ -720,11 +843,16 @@ type LinkChannelIssueRequest struct {
 }
 
 func (h *Handler) LinkChannelIssue(w http.ResponseWriter, r *http.Request) {
-	userID, ok := requireUserID(w, r)
+	_, ok := requireUserID(w, r)
 	if !ok {
 		return
 	}
+	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
+	_, member, _, ok := h.requireChannelAdmin(w, r, workspaceID, channelID)
+	if !ok {
+		return
+	}
 
 	var req LinkChannelIssueRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -735,7 +863,7 @@ func (h *Handler) LinkChannelIssue(w http.ResponseWriter, r *http.Request) {
 	_, err := h.DB.Exec(r.Context(), `
 		INSERT INTO channel_issues (channel_id, issue_id, linked_by)
 		VALUES ($1, $2, $3)
-	`, parseUUID(channelID), parseUUID(req.IssueID), parseUUID(userID))
+	`, parseUUID(channelID), parseUUID(req.IssueID), member.ID)
 	if err != nil {
 		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "issue already linked")
@@ -749,7 +877,11 @@ func (h *Handler) LinkChannelIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListChannelIssues(w http.ResponseWriter, r *http.Request) {
+	workspaceID := ctxWorkspaceID(r.Context())
 	channelID := chi.URLParam(r, "channelId")
+	if _, _, _, ok := h.requireChannelMember(w, r, workspaceID, channelID); !ok {
+		return
+	}
 
 	rows, err := h.DB.Query(r.Context(), `
 		SELECT issue_id FROM channel_issues WHERE channel_id = $1
